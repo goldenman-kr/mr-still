@@ -1,0 +1,31 @@
+# Build products and generated fixtures
+.build/
+build/
+DerivedData/
+.swiftpm/
+*.app/
+*.dSYM/
+*.xcarchive/
+
+# macOS and Xcode user state
+.DS_Store
+*.xcuserstate
+xcuserdata/
+
+# Local agent state, validation artifacts, and personal screenshots
+.omx/
+.codex/
+.agents/
+docs/screenshots/
+
+# Local configuration and credentials
+.env
+.env.*
+!.env.example
+*.local.xcconfig
+*.p12
+*.pfx
+*.pem
+*.key
+*.mobileprovision
+*.provisionprofile

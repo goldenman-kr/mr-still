@@ -1,0 +1,50 @@
+// !$*UTF8*$!
+{ archiveVersion = 1; classes = {}; objectVersion = 56; objects = {
+0CBB332AEF3E9C130D9921F2 = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Sources/PhotoViewer/AppDelegate.swift"; sourceTree = SOURCE_ROOT; };
+B75BB78BCE630A760CF9E861 = { isa = PBXBuildFile; fileRef = 0CBB332AEF3E9C130D9921F2; };
+D470B87B597D85D9097DA80B = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Sources/PhotoViewer/BrowserControllers.swift"; sourceTree = SOURCE_ROOT; };
+B689D5D3B826DC4B4F40B442 = { isa = PBXBuildFile; fileRef = D470B87B597D85D9097DA80B; };
+B495577F69242D7478D29A6A = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Sources/PhotoViewer/BrowserModel.swift"; sourceTree = SOURCE_ROOT; };
+B39A56FBD349455A7F0D5656 = { isa = PBXBuildFile; fileRef = B495577F69242D7478D29A6A; };
+28B6CB405E102816B28C3DA3 = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Sources/PhotoViewer/DefaultImageApplication.swift"; sourceTree = SOURCE_ROOT; };
+E92443AC68B596D002D2D35E = { isa = PBXBuildFile; fileRef = 28B6CB405E102816B28C3DA3; };
+5EC67C0F66563A706D37373E = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Sources/PhotoViewer/MainWindowController.swift"; sourceTree = SOURCE_ROOT; };
+0058B46A5776826C5BA3250D = { isa = PBXBuildFile; fileRef = 5EC67C0F66563A706D37373E; };
+C1F0E0EFD8550843F6E0EC29 = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Sources/PhotoViewer/MetadataInfoController.swift"; sourceTree = SOURCE_ROOT; };
+59C39D6ECD8D1A07750468D6 = { isa = PBXBuildFile; fileRef = C1F0E0EFD8550843F6E0EC29; };
+2EE6C9D5C99C05FA3A3A73B0 = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Sources/PhotoViewer/ViewerController.swift"; sourceTree = SOURCE_ROOT; };
+1988A937ACD585D79709C934 = { isa = PBXBuildFile; fileRef = 2EE6C9D5C99C05FA3A3A73B0; };
+0EE335EF70C3E723992B9B89 = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Sources/PhotoViewerCore/Models.swift"; sourceTree = SOURCE_ROOT; };
+4428157C3BEB85126EA54F3B = { isa = PBXBuildFile; fileRef = 0EE335EF70C3E723992B9B89; };
+CE040E87C0C80438F9E53173 = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Sources/PhotoViewerCore/Services.swift"; sourceTree = SOURCE_ROOT; };
+CD5DA37C207F117E3A158343 = { isa = PBXBuildFile; fileRef = CE040E87C0C80438F9E53173; };
+9CEEC13202AFBF12EE3ABB99 = { isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Resources/Info.plist; sourceTree = SOURCE_ROOT; };
+C2D4B446A44CE54FAB8E0115 = { isa = PBXFileReference; lastKnownFileType = image.icns; path = Resources/AppIcon.icns; sourceTree = SOURCE_ROOT; };
+70D014DFD0551F34D8889566 = { isa = PBXBuildFile; fileRef = C2D4B446A44CE54FAB8E0115; };
+A172CEDCAE47474B615C54D5 = { isa = PBXFileReference; explicitFileType = wrapper.application; path = "Mr. Still.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+0A3E27B8CA818264D75C8D81 = { isa = PBXGroup; children = (A172CEDCAE47474B615C54D5,); name = Products; sourceTree = "<group>"; };
+0D6E4079E36703EBD37C0072 = { isa = PBXGroup; children = (0CBB332AEF3E9C130D9921F2,D470B87B597D85D9097DA80B,B495577F69242D7478D29A6A,28B6CB405E102816B28C3DA3,5EC67C0F66563A706D37373E,C1F0E0EFD8550843F6E0EC29,2EE6C9D5C99C05FA3A3A73B0,0EE335EF70C3E723992B9B89,CE040E87C0C80438F9E53173,9CEEC13202AFBF12EE3ABB99,C2D4B446A44CE54FAB8E0115,0A3E27B8CA818264D75C8D81,); sourceTree = "<group>"; };
+878A52FC5FF6A57D50B7B870 = { isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (B75BB78BCE630A760CF9E861,B689D5D3B826DC4B4F40B442,B39A56FBD349455A7F0D5656,E92443AC68B596D002D2D35E,0058B46A5776826C5BA3250D,59C39D6ECD8D1A07750468D6,1988A937ACD585D79709C934,4428157C3BEB85126EA54F3B,CD5DA37C207F117E3A158343,); runOnlyForDeploymentPostprocessing = 0; };
+E2AA269EB967A8853A258BFA = { isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+41D311A605520FC7B8B9A980 = { isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (70D014DFD0551F34D8889566,); runOnlyForDeploymentPostprocessing = 0; };
+3D5D06619AD2FD8BA0F34D57 = { isa = XCBuildConfiguration; name = Debug; buildSettings = { SDKROOT = macosx; MACOSX_DEPLOYMENT_TARGET = 14.0; CLANG_ENABLE_MODULES = YES; }; };
+43766E90644A487AA94F24A8 = { isa = XCBuildConfiguration; name = Debug; buildSettings = {
+      PRODUCT_NAME = "Mr. Still"; PRODUCT_BUNDLE_IDENTIFIER = "photoviewer.app.kryp.xyz";
+      INFOPLIST_FILE = Resources/Info.plist; GENERATE_INFOPLIST_FILE = NO; SWIFT_VERSION = 5.0;
+      SWIFT_OPTIMIZATION_LEVEL = "-Onone"; SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG";
+      CODE_SIGN_STYLE = Manual; CODE_SIGN_IDENTITY = "-"; ENABLE_APP_SANDBOX = NO;
+      ENABLE_HARDENED_RUNTIME = YES; COMBINE_HIDPI_IMAGES = YES;
+    }; };
+61EE91C00F7653342CB155AF = { isa = XCBuildConfiguration; name = Release; buildSettings = { SDKROOT = macosx; MACOSX_DEPLOYMENT_TARGET = 14.0; CLANG_ENABLE_MODULES = YES; }; };
+1E42B1A1A92F267CC06A78B3 = { isa = XCBuildConfiguration; name = Release; buildSettings = {
+      PRODUCT_NAME = "Mr. Still"; PRODUCT_BUNDLE_IDENTIFIER = "photoviewer.app.kryp.xyz";
+      INFOPLIST_FILE = Resources/Info.plist; GENERATE_INFOPLIST_FILE = NO; SWIFT_VERSION = 5.0;
+      SWIFT_OPTIMIZATION_LEVEL = "-O"; SWIFT_ACTIVE_COMPILATION_CONDITIONS = "";
+      CODE_SIGN_STYLE = Manual; CODE_SIGN_IDENTITY = "-"; ENABLE_APP_SANDBOX = NO;
+      ENABLE_HARDENED_RUNTIME = YES; COMBINE_HIDPI_IMAGES = YES;
+    }; };
+F0D0CC3CD0AE36F97BD8FD2B = { isa = XCConfigurationList; buildConfigurations = (3D5D06619AD2FD8BA0F34D57,61EE91C00F7653342CB155AF,); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+B149CDBB55CAEF05BF802F0B = { isa = XCConfigurationList; buildConfigurations = (43766E90644A487AA94F24A8,1E42B1A1A92F267CC06A78B3,); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+34A04005BCAF206EEC990BD9 = { isa = PBXNativeTarget; name = PhotoViewer; productName = "Mr. Still"; productReference = A172CEDCAE47474B615C54D5; productType = "com.apple.product-type.application"; buildConfigurationList = B149CDBB55CAEF05BF802F0B; buildPhases = (878A52FC5FF6A57D50B7B870,E2AA269EB967A8853A258BFA,41D311A605520FC7B8B9A980,); buildRules = (); dependencies = (); };
+244210E48437B6556980A702 = { isa = PBXProject; attributes = { LastUpgradeCheck = 2700; }; buildConfigurationList = F0D0CC3CD0AE36F97BD8FD2B; compatibilityVersion = "Xcode 14.0"; developmentRegion = ko; knownRegions = (ko,en,Base); mainGroup = 0D6E4079E36703EBD37C0072; productRefGroup = 0A3E27B8CA818264D75C8D81; projectDirPath = ""; projectRoot = ""; targets = (34A04005BCAF206EEC990BD9,); };
+}; rootObject = 244210E48437B6556980A702; }

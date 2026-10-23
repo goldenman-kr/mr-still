@@ -1,0 +1,136 @@
+{
+  "conditions" : [
+    "Optimized (-O) standalone Swift executable compiled directly with the current Models.swift and Services.swift.",
+    "10,000 synthetic directory entries are hardlinks to the same fixture; filesystem metadata\/link locality is not representative of 10,000 unrelated photographs.",
+    "Each workload runs in a separate child process with one excluded warmup and 20 serial measured iterations; filesystem cache is warm and is not purged.",
+    "ImageLoader.load creates a new image source each time; no ThumbnailService cache is involved. The API requests immediate decode caching.",
+    "Autorelease pools drain between iterations; measurement includes returned object validation and excludes fixture creation.",
+    "p95 uses nearest-rank ceil(0.95*n), median averages the middle pair. Samples are wall-clock milliseconds.",
+    "Peak RSS is getrusage(RUSAGE_SELF).ru_maxrss in bytes on macOS, covering the workload child lifetime including warmup and runtime overhead; it is not an incremental allocation measurement.",
+    "Concurrent desktop activity and other verification processes are uncontrolled; results are observations, not pass\/fail thresholds."
+  ],
+  "fixture" : {
+    "file_bytes" : 640342,
+    "height_pixels" : 4000,
+    "kind" : "Synthetic gradient JPEG; generated locally, not a user photo",
+    "path" : "build\/Fixtures\/01 Alpine Lake.jpg",
+    "width_pixels" : 6000
+  },
+  "host" : {
+    "active_processor_count" : 10,
+    "cpu" : "Apple M4",
+    "hardware_model" : "Mac16,1",
+    "os" : "Version 26.6.2 (Build 25G83)",
+    "physical_memory_bytes" : 25769803776
+  },
+  "measurements" : [
+    {
+      "excluded_warmup_iterations" : 1,
+      "file_count" : 10000,
+      "maximum_ms" : 400.03800000000001,
+      "measured_iterations" : 20,
+      "median_ms" : 329.1654375,
+      "minimum_ms" : 316.09937500000001,
+      "name" : "directory_listing_and_natural_name_sort",
+      "p95_ms" : 358.618583,
+      "peak_rss_bytes" : 115359744,
+      "samples_ms" : [
+        323.55283400000002,
+        320.41870799999998,
+        316.09937500000001,
+        316.71408300000002,
+        320.244125,
+        319.90899999999999,
+        322.41033299999998,
+        347.42733299999998,
+        329.65741700000001,
+        333.51125000000002,
+        341.90004199999998,
+        325.594875,
+        358.618583,
+        400.03800000000001,
+        325.53500000000003,
+        333.14320800000002,
+        343.05429199999998,
+        328.67345799999998,
+        336.42162500000001,
+        333.24112500000001
+      ]
+    },
+    {
+      "decoded_dimensions_pixels" : [
+        1600,
+        1067
+      ],
+      "excluded_warmup_iterations" : 1,
+      "maximum_ms" : 31.470334000000001,
+      "measured_iterations" : 20,
+      "median_ms" : 29.209583000000002,
+      "minimum_ms" : 28.123457999999999,
+      "name" : "24mp_preview_decode_1600px",
+      "p95_ms" : 30.667124999999999,
+      "peak_rss_bytes" : 147636224,
+      "samples_ms" : [
+        28.277125000000002,
+        28.123457999999999,
+        28.486750000000001,
+        28.717666999999999,
+        28.656124999999999,
+        31.470334000000001,
+        30.343167000000001,
+        28.729541000000001,
+        29.125166,
+        29.294,
+        28.6355,
+        29.828875,
+        29.600833000000002,
+        29.325917,
+        29.954000000000001,
+        28.580500000000001,
+        30.667124999999999,
+        29.585457999999999,
+        28.967209,
+        30.468125000000001
+      ]
+    },
+    {
+      "decoded_dimensions_pixels" : [
+        6000,
+        4000
+      ],
+      "excluded_warmup_iterations" : 1,
+      "maximum_ms" : 146.41662500000001,
+      "measured_iterations" : 20,
+      "median_ms" : 64.980604499999998,
+      "minimum_ms" : 55.694958,
+      "name" : "24mp_original_decode",
+      "p95_ms" : 127.927542,
+      "peak_rss_bytes" : 329695232,
+      "samples_ms" : [
+        59.088374999999999,
+        55.694958,
+        146.41662500000001,
+        79.684708000000001,
+        80.534082999999995,
+        70.484540999999993,
+        61.668666999999999,
+        127.927542,
+        87.440208999999996,
+        65.342708999999999,
+        64.618499999999997,
+        67.080916000000002,
+        62.579957999999998,
+        56.617874999999998,
+        58.333500000000001,
+        66.247667000000007,
+        60.469332999999999,
+        64.390666999999993,
+        68.583708000000001,
+        63.929875000000003
+      ]
+    }
+  ],
+  "recorded_at_utc" : "2026-10-22T11:33:05Z",
+  "reproduction" : "swiftc -O -target arm64-apple-macos14.0 -module-cache-path build\/BenchmarkModuleCache -parse-as-library Sources\/PhotoViewerCore\/Models.swift Sources\/PhotoViewerCore\/Services.swift scripts\/benchmark.swift -o build\/Verification\/benchmark && build\/Verification\/benchmark",
+  "scope" : "Core service throughput only. Does not measure UI transition latency, rendering, thumbnail grid population, event-loop responsiveness, or app-wide peak memory."
+}
