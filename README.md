@@ -2,10 +2,23 @@
 
 사진 폴더 탐색과 이미지 보기에 집중한 Swift/AppKit macOS 앱입니다. 외부 패키지 없이 Image I/O와 네이티브 파일·인쇄 UI를 사용합니다.
 
+## 설치
+
+macOS 14 이상에서 사용할 수 있습니다. Apple Silicon과 Intel Mac을 모두 지원하는 Universal 앱입니다.
+
+1. [최신 릴리스](https://github.com/goldenman-kr/mr-still/releases/latest)에서 `Mr.Still-1.0.0-universal.dmg`를 다운로드합니다.
+2. DMG를 열고 **Mr. Still**을 **Applications** 폴더로 드래그합니다.
+3. 디스크 이미지를 추출하고 응용 프로그램 폴더에서 **Mr. Still**을 실행합니다.
+
+### 첫 실행 시 macOS가 차단하는 경우
+
+현재 DMG는 **Developer ID로 서명했지만 Apple 공증은 받지 않았습니다**. 첫 실행이 차단될 수 있습니다. 이 저장소의 공식 Releases에서 받은 파일인지 확인한 후, **시스템 설정 → 개인정보 보호 및 보안 → 보안**에서 해당 앱의 **확인 없이 열기**를 선택해 실행을 승인할 수 있습니다. 자세한 내용은 [Apple의 앱 실행 안내](https://support.apple.com/ko-kr/102445)를 참고하세요.
+
+사진 폴더는 앱의 **파일 → 폴더 열기**로 선택합니다. 기본 이미지 앱으로 사용하려면 **파일 → 기본 이미지 앱으로 설정**을 선택합니다.
+
 ## 실행과 빌드
 
 - 개발 대상: macOS 14 이상. 현재 실행 검증 환경은 Apple Silicon, macOS 26.6.2, Xcode 27.0입니다.
-- 앱 이름: **Mr. Still**, 번들 식별자: `photoviewer.app.kryp.xyz`.
 - 완성된 로컬 빌드: `build/DerivedData/Build/Products/Release/Mr. Still.app`
 - Debug 빌드: `./scripts/build.sh Debug`
 - Release 빌드: `./scripts/build.sh Release`
@@ -18,7 +31,7 @@
 ./scripts/build.sh Release CODE_SIGN_IDENTITY="Apple Development: YOUR_IDENTITY" DEVELOPMENT_TEAM=YOUR_TEAM_ID
 ```
 
-빌드 결과물, 개인 설정, 로컬 검증 로그와 스크린샷은 `.gitignore`로 제외합니다. 앱은 별도로 빌드해 실행하며, 이 저장소에는 설치용 바이너리를 포함하지 않습니다.
+빌드 결과물, 개인 설정, 로컬 검증 로그와 스크린샷은 `.gitignore`로 제외합니다. 설치용 DMG는 GitHub Releases에서 배포하며 소스 저장소에는 포함하지 않습니다.
 
 ## 사용법
 
