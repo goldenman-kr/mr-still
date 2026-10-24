@@ -1,4 +1,5 @@
 import AppKit
+import UniformTypeIdentifiers
 import Combine
 #if SWIFT_PACKAGE
 import PhotoViewerCore
@@ -12,7 +13,7 @@ final class ViewerController: NSViewController, NSTextFieldDelegate, NSPopoverDe
     private let statusControls = NSStackView()
     private let slider = NSSlider(value: 0, minValue: -7, maxValue: log(3), target: nil, action: nil)
     private let percent = NSTextField(string: "100")
-    private let details = NSTextField(labelWithString: "폴더 또는 사진을 여세요")
+    private let details = NSTextField(labelWithString: L10n.text("Open a folder or photo"))
     private var modeButton: NSButton!
     private var fullscreenButton: NSButton!
     private var infoButton: NSButton!
@@ -60,21 +61,21 @@ final class ViewerController: NSViewController, NSTextFieldDelegate, NSPopoverDe
         statusControls.distribution = .fill
         status.wantsLayer = true
         status.layer?.backgroundColor = NSColor.windowBackgroundColor.withAlphaComponent(0.96).cgColor
-        let fit = button("arrow.down.right.and.arrow.up.left", "화면에 맞춤", #selector(fitAction))
-        infoButton = button("info.circle", "이미지 정보 (I)", #selector(infoAction))
-        modeButton = button("sidebar.left", "탐색기 / 슬라이드 모드", #selector(modeAction))
-        fullscreenButton = button("arrow.up.left.and.arrow.down.right", "전체 화면 (F)", #selector(fullscreenAction))
+        let fit = button("arrow.down.right.and.arrow.up.left", L10n.text("Fit to Window"), #selector(fitAction))
+        infoButton = button("info.circle", L10n.text("Image Info (I)"), #selector(infoAction))
+        modeButton = button("sidebar.left", L10n.text("Browser / Slide Mode"), #selector(modeAction))
+        fullscreenButton = button("arrow.up.left.and.arrow.down.right", L10n.text("Full Screen (F)"), #selector(fullscreenAction))
         slider.target = self
         slider.action = #selector(sliderChanged)
         slider.isContinuous = true
-        slider.setAccessibilityLabel("이미지 확대 비율")
+        slider.setAccessibilityLabel(L10n.text("Image zoom level"))
         slider.widthAnchor.constraint(equalToConstant: 86).isActive = true
         percent.alignment = .right
         percent.target = self
         percent.action = #selector(percentChanged)
         percent.delegate = self
         percent.widthAnchor.constraint(equalToConstant: 66).isActive = true
-        percent.setAccessibilityLabel("확대 백분율")
+        percent.setAccessibilityLabel(L10n.text("Zoom percentage"))
         details.lineBreakMode = .byTruncatingMiddle
         details.font = .systemFont(ofSize: 10)
         details.textColor = .secondaryLabelColor
@@ -108,6 +109,7 @@ final class ViewerController: NSViewController, NSTextFieldDelegate, NSPopoverDe
             status.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             status.bottomAnchor.constraint(equalTo: view.bottomAnchor)
         ])
+        canvas.contextMenuProvider = { [weak self] in self?.imageContextMenu() }
         canvas.onNavigate = { [weak model] step in model?.navigate(step) }
         canvas.onDoubleClick = { [weak self] in
             guard let self, !self.fullscreen else { return }
@@ -139,7 +141,7 @@ final class ViewerController: NSViewController, NSTextFieldDelegate, NSPopoverDe
             self.displayedFile = updated
         }.store(in: &subscriptions)
         model.$slideMode.sink { [weak self] slide in
-            self?.modeButton.image = NSImage(systemSymbolName: slide ? "sidebar.left" : "rectangle", accessibilityDescription: slide ? "탐색기로 돌아가기" : "슬라이드 모드")
+            self?.modeButton.image = NSImage(systemSymbolName: slide ? "sidebar.left" : "rectangle", accessibilityDescription: slide ? L10n.text("Back to Browser") : L10n.text("Slide Mode"))
         }.store(in: &subscriptions)
     }
 
@@ -153,12 +155,12 @@ final class ViewerController: NSViewController, NSTextFieldDelegate, NSPopoverDe
     }
 
     private func configureCloseButton() {
-        closeButton.image = NSImage(systemSymbolName: "xmark.circle.fill", accessibilityDescription: "전체 화면 종료")
+        closeButton.image = NSImage(systemSymbolName: "xmark.circle.fill", accessibilityDescription: L10n.text("Exit Full Screen"))
         closeButton.target = self
         closeButton.action = #selector(fullscreenAction)
         closeButton.bezelStyle = .inline
         closeButton.contentTintColor = .white
-        closeButton.toolTip = "전체 화면 종료 (Esc)"
+        closeButton.toolTip = L10n.text("Exit Full Screen (Esc)")
         closeButton.translatesAutoresizingMaskIntoConstraints = false
         closeButton.isHidden = true
         canvas.addSubview(closeButton)
@@ -182,9 +184,9 @@ final class ViewerController: NSViewController, NSTextFieldDelegate, NSPopoverDe
         canvas.image = nil
         canvas.pixelSize = .zero
         canvas.pan = .zero
-        canvas.message = url == nil ? "폴더 또는 사진을 여세요" : "사진 불러오는 중…"
+        canvas.message = url == nil ? L10n.text("Open a folder or photo") : L10n.text("Loading photo…")
         canvas.needsDisplay = true
-        details.stringValue = url?.lastPathComponent ?? "선택된 사진 없음"
+        details.stringValue = url?.lastPathComponent ?? L10n.text("No photo selected")
         updateControls()
         guard let url else { return }
         let token = generation
@@ -199,8 +201,8 @@ final class ViewerController: NSViewController, NSTextFieldDelegate, NSPopoverDe
                     self.canvas.message = ""
                     self.fitImage()
                 case .failure(let error):
-                    self.canvas.message = "이미지를 열 수 없습니다\n\(error.localizedDescription)"
-                    self.details.stringValue = "불러오기 실패 · \(url.lastPathComponent)"
+                    self.canvas.message = L10n.format("Could not open image\n%@", error.localizedDescription)
+                    self.details.stringValue = L10n.format("Loading failed · %@", url.lastPathComponent)
                     self.canvas.needsDisplay = true
                     self.updateControls()
                 }
@@ -281,8 +283,8 @@ final class ViewerController: NSViewController, NSTextFieldDelegate, NSPopoverDe
         let requested = original * min(1, canvas.scale)
         let wanted = Int(min(CGFloat(maximumDecodeDimension), ceil(requested)))
         if requested > CGFloat(maximumDecodeDimension), let url = imageURL {
-            details.stringValue = "\(url.lastPathComponent) · \(Int(canvas.pixelSize.width)) × \(Int(canvas.pixelSize.height))\(fileSizeSuffix) · 대형 이미지 해상도 제한"
-            details.toolTip = "대형 사진의 메모리 사용량을 제한하기 위해 최대 1억 2,800만 픽셀 또는 긴 변 32,768픽셀의 미리보기를 표시합니다. 배율은 원본 크기를 기준으로 합니다."
+            details.stringValue = L10n.format("%@ · %ld × %ld%@ · Large image resolution limited", url.lastPathComponent, Int(canvas.pixelSize.width), Int(canvas.pixelSize.height), fileSizeSuffix)
+            details.toolTip = L10n.text("To limit memory use for large photos, previews are limited to 128 megapixels or 32,768 pixels on the longest edge. Zoom is based on the original dimensions.")
         }
         guard wanted > decodedLimit + 32 else { return }
         let token = generation
@@ -394,6 +396,91 @@ final class ViewerController: NSViewController, NSTextFieldDelegate, NSPopoverDe
 
     func popoverDidClose(_ notification: Notification) { refreshStatusVisibility() }
 
+    var canCopyImage: Bool { isViewLoaded && canvas.image != nil && imageURL != nil }
+
+    func copyImage(to pasteboard: NSPasteboard = .general) {
+        guard canCopyImage, let url = imageURL else { return }
+        let token = generation
+        // Decode the oriented original, independent of the current zoom/preview resolution.
+        decode(url, limit: nil) { [weak self] result in
+            guard let self, self.generation == token else { return }
+            switch result {
+            case .success(let loaded):
+                let image = NSImage(cgImage: loaded.image, size: NSSize(width: loaded.image.width, height: loaded.image.height))
+                pasteboard.clearContents()
+                if !pasteboard.writeObjects([image]) { NSSound.beep() }
+            case .failure(let error): self.model.errorMessage = error.localizedDescription
+            }
+        }
+    }
+
+    func copyFilePath(to pasteboard: NSPasteboard = .general) {
+        guard canCopyImage, let url = imageURL else { return }
+        pasteboard.clearContents()
+        pasteboard.setString(url.path, forType: .string)
+    }
+
+    func imageContextMenu() -> NSMenu? {
+        guard canCopyImage, let url = imageURL else { return nil }
+        let menu = NSMenu()
+        func add(_ title: String, _ action: Selector) -> NSMenuItem {
+            let item = NSMenuItem(title: L10n.text(title), action: action, keyEquivalent: "")
+            item.target = self
+            menu.addItem(item)
+            return item
+        }
+        let copy = add("Copy Image", #selector(copyImageAction))
+        copy.keyEquivalent = "c"
+        copy.keyEquivalentModifierMask = .command
+        _ = add("Copy File Path", #selector(copyPathAction))
+        let open = add("Open With", #selector(chooseApplication))
+        let apps = NSMenu()
+        let candidates = NSWorkspace.shared.urlsForApplications(toOpen: url).filter {
+            Bundle(url: $0)?.bundleIdentifier != Bundle.main.bundleIdentifier
+        }.sorted {
+            FileManager.default.displayName(atPath: $0.path).localizedStandardCompare(FileManager.default.displayName(atPath: $1.path)) == .orderedAscending
+        }
+        for app in candidates {
+            let item = NSMenuItem(title: FileManager.default.displayName(atPath: app.path), action: #selector(openInApplication(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = app
+            let icon = NSWorkspace.shared.icon(forFile: app.path)
+            icon.size = NSSize(width: 16, height: 16)
+            item.image = icon
+            apps.addItem(item)
+        }
+        if !candidates.isEmpty { apps.addItem(.separator()) }
+        let other = NSMenuItem(title: L10n.text("Choose Application…"), action: #selector(chooseApplication), keyEquivalent: "")
+        other.target = self
+        apps.addItem(other)
+        open.submenu = apps
+        return menu
+    }
+
+    @objc private func copyImageAction() { copyImage() }
+    @objc private func copyPathAction() { copyFilePath() }
+    @objc private func openInApplication(_ sender: NSMenuItem) {
+        guard let app = sender.representedObject as? URL, let url = imageURL else { return }
+        open(url, in: app)
+    }
+    @objc private func chooseApplication() {
+        guard let url = imageURL, let window = view.window else { return }
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.application]
+        panel.directoryURL = URL(fileURLWithPath: "/Applications", isDirectory: true)
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = false
+        panel.beginSheetModal(for: window) { [weak self] response in
+            guard response == .OK, let app = panel.url else { return }
+            self?.open(url, in: app)
+        }
+    }
+    private func open(_ url: URL, in app: URL) {
+        NSWorkspace.shared.open([url], withApplicationAt: app, configuration: NSWorkspace.OpenConfiguration()) { [weak self] _, error in
+            if let error { Task { @MainActor in self?.model.errorMessage = error.localizedDescription } }
+        }
+    }
+
     func printImage() {
         guard let url = imageURL, let window = view.window else { return }
         let token = generation
@@ -453,7 +540,13 @@ final class ImageCanvasView: NSView {
     var scale: Double = 1
     var pan: CGPoint = .zero
     var selectionCount = 0
-    var message = "폴더 또는 사진을 여세요"
+    var message = L10n.text("Open a folder or photo")
+    var contextMenuProvider: (() -> NSMenu?)?
+    override func menu(for event: NSEvent) -> NSMenu? {
+        guard image != nil else { return nil }
+        window?.makeFirstResponder(self)
+        return contextMenuProvider?()
+    }
     var onNavigate: ((Int) -> Void)?
     var onDoubleClick: (() -> Void)?
     var onEnter: (() -> Void)?
@@ -468,10 +561,13 @@ final class ImageCanvasView: NSView {
     override var isOpaque: Bool { true }
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
+        // Never stretch a cached canvas bitmap while its layer is being resized.
+        layerContentsRedrawPolicy = .duringViewResize
+        layerContentsPlacement = .center
         setAccessibilityElement(true)
         setAccessibilityRole(.image)
-        setAccessibilityLabel("사진 뷰어. 화살표로 사진 이동, Command 더하기 또는 빼기로 확대 축소")
-        for (button, label, action) in [(previousButton, "이전 사진", #selector(previousPhoto)), (nextButton, "다음 사진", #selector(nextPhoto))] {
+        setAccessibilityLabel(L10n.text("Photo viewer. Use arrow keys to navigate, and Command plus or minus to zoom."))
+        for (button, label, action) in [(previousButton, L10n.text("Previous Photo"), #selector(previousPhoto)), (nextButton, L10n.text("Next Photo"), #selector(nextPhoto))] {
             button.target = self
             button.action = action
             button.isBordered = false
@@ -499,11 +595,26 @@ final class ImageCanvasView: NSView {
         super.setFrameSize(newSize)
         if changed { onViewportChange?() }
     }
+    override func setFrameOrigin(_ newOrigin: NSPoint) {
+        let changed = frame.origin != newOrigin
+        super.setFrameOrigin(newOrigin)
+        if changed { needsDisplay = true }
+    }
+    override func viewDidEndLiveResize() {
+        super.viewDidEndLiveResize()
+        needsDisplay = true
+    }
     override func viewDidChangeBackingProperties() { super.viewDidChangeBackingProperties(); onViewportChange?() }
 
-    private var imageRect: NSRect {
+    var imageRect: NSRect {
         let size = NSSize(width: pixelSize.width * scale / backingScale, height: pixelSize.height * scale / backingScale)
-        return NSRect(x: bounds.midX - size.width / 2 + pan.x, y: bounds.midY - size.height / 2 + pan.y, width: size.width, height: size.height)
+        let rect = NSRect(x: bounds.midX - size.width / 2 + pan.x, y: bounds.midY - size.height / 2 + pan.y, width: size.width, height: size.height)
+        // Centering odd-sized images (or fractional split panes/pan) can land
+        // between device pixels. Snap only the origin, preserving the zoom size.
+        var pixels = convertToBacking(rect)
+        pixels.origin.x = pixels.origin.x.rounded()
+        pixels.origin.y = pixels.origin.y.rounded()
+        return convertFromBacking(pixels)
     }
     func constrainPan() {
         let rect = imageRect
@@ -531,7 +642,7 @@ final class ImageCanvasView: NSView {
         context.interpolationQuality = scale >= 1 ? .none : .high
         context.draw(image, in: rect)
         if selectionCount > 1 {
-            let badge = "\(selectionCount)개 선택" as NSString
+            let badge = L10n.format("%ld selected", selectionCount) as NSString
             badge.draw(at: NSPoint(x: 14, y: 12), withAttributes: [.font: NSFont.systemFont(ofSize: 12, weight: .medium), .foregroundColor: NSColor.white, .backgroundColor: NSColor.black.withAlphaComponent(0.5)])
         }
     }

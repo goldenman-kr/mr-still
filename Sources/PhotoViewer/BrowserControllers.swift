@@ -1,5 +1,6 @@
 import AppKit
 import Combine
+import Darwin
 #if SWIFT_PACKAGE
 import PhotoViewerCore
 #endif
@@ -19,7 +20,7 @@ private final class DirectoryNode: NSObject {
     }
     init(favorites: [DirectoryNode]) {
         url = nil
-        title = "즐겨찾기"
+        title = L10n.text("Favorites")
         children = favorites
     }
 }
@@ -37,30 +38,42 @@ final class DirectoryTreeController: NSViewController, NSOutlineViewDataSource, 
     private let model: BrowserModel
     private let homeURL: URL
     private let outline = DirectoryOutlineView()
-    private let path = NSTextField(labelWithString: "폴더를 열어 주세요")
+    private let path: FolderPathBar
     private let back = NSButton()
     private let forward = NSButton()
     private let up = NSButton()
     private let reload = NSButton()
+    private let homeButton = NSButton()
     private let favorites = DirectoryNode(favorites: [])
     private var roots: [DirectoryNode] = []
     private var subscriptions = Set<AnyCancellable>()
     private var updatingSelection = false
     private var revealGeneration = 0
 
-    init(model: BrowserModel, homeURL: URL = FileManager.default.homeDirectoryForCurrentUser) {
+    init(model: BrowserModel, homeURL: URL? = nil) {
         self.model = model
-        self.homeURL = homeURL
+        // The sandbox's homeDirectoryForCurrentUser is the app container.
+        // Resolving the account home path does not grant or read its contents.
+        self.homeURL = homeURL ?? getpwuid(getuid()).flatMap { account in
+            account.pointee.pw_dir.map { URL(fileURLWithPath: String(cString: $0), isDirectory: true) }
+        } ?? FileManager.default.homeDirectoryForCurrentUser
+        path = FolderPathBar(homeURL: self.homeURL)
         super.init(nibName: nil, bundle: nil)
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
     override func loadView() {
         view = NSView()
-        path.isSelectable = true
-        path.lineBreakMode = .byTruncatingMiddle
-        path.font = .systemFont(ofSize: 11)
-        path.setAccessibilityLabel("현재 폴더 경로")
+        path.navigate = { [weak self] target in
+            guard let self, target != self.model.folder else { return }
+            var directory: ObjCBool = false
+            let exists = FileManager.default.fileExists(atPath: target.path, isDirectory: &directory)
+            // Reject files/missing paths without changing the current folder. For an
+            // unapproved sandbox location, let the model request a grant before I/O.
+            if exists && !directory.boolValue { return }
+            if !exists && self.model.access.hasAccess(to: target) { return }
+            self.model.openFolder(target)
+        }
         let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("folder"))
         column.resizingMask = .autoresizingMask
         outline.addTableColumn(column)
@@ -73,7 +86,7 @@ final class DirectoryTreeController: NSViewController, NSOutlineViewDataSource, 
         outline.delegate = self
         outline.target = self
         outline.doubleAction = #selector(toggleClickedDirectory(_:))
-        outline.setAccessibilityLabel("폴더 탐색")
+        outline.setAccessibilityLabel(L10n.text("Folder browser"))
         outline.onContext = { [weak self] row in self?.contextMenu(at: row) }
         let scroll = NSScrollView()
         scroll.documentView = outline
@@ -86,10 +99,11 @@ final class DirectoryTreeController: NSViewController, NSOutlineViewDataSource, 
         header.contentViewMargins = .zero
         header.identifier = NSUserInterfaceItemIdentifier("DirectoryPathHeader")
         for (button, symbol, label, action) in [
-            (back, "arrow.left", "뒤로", #selector(goBack(_:))),
-            (forward, "arrow.right", "앞으로", #selector(goForward(_:))),
-            (up, "arrow.up", "위로", #selector(goUp(_:))),
-            (reload, "arrow.clockwise", "새로고침", #selector(refreshFolder(_:)))
+            (back, "arrow.left", L10n.text("Back"), #selector(goBack(_:))),
+            (forward, "arrow.right", L10n.text("Forward"), #selector(goForward(_:))),
+            (up, "arrow.up", L10n.text("Up"), #selector(goUp(_:))),
+            (reload, "arrow.clockwise", L10n.text("Refresh"), #selector(refreshFolder(_:))),
+            (homeButton, "house", L10n.text("Home"), #selector(goHome(_:)))
         ] {
             button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: label)
             button.imagePosition = .imageOnly
@@ -97,11 +111,11 @@ final class DirectoryTreeController: NSViewController, NSOutlineViewDataSource, 
             button.contentTintColor = .labelColor
             button.controlSize = .small
             button.target = self; button.action = action
-            button.setAccessibilityLabel("폴더 " + label)
+            button.setAccessibilityLabel(L10n.format("Folder navigation: %@", label))
             button.toolTip = label + (button === back ? " (⌥←)" : button === forward ? " (⌥→)" : "")
             button.isEnabled = false
         }
-        for child in [back, forward, up, reload, path] {
+        for child in [back, forward, up, reload, homeButton, path] {
             header.addSubview(child)
             child.translatesAutoresizingMaskIntoConstraints = false
         }
@@ -127,7 +141,11 @@ final class DirectoryTreeController: NSViewController, NSOutlineViewDataSource, 
             reload.centerYAnchor.constraint(equalTo: header.centerYAnchor),
             reload.widthAnchor.constraint(equalToConstant: 24),
             reload.heightAnchor.constraint(equalToConstant: 24),
-            path.leadingAnchor.constraint(equalTo: reload.trailingAnchor, constant: 8),
+            homeButton.leadingAnchor.constraint(equalTo: reload.trailingAnchor, constant: 2),
+            homeButton.centerYAnchor.constraint(equalTo: header.centerYAnchor),
+            homeButton.widthAnchor.constraint(equalToConstant: 24),
+            homeButton.heightAnchor.constraint(equalToConstant: 24),
+            path.leadingAnchor.constraint(equalTo: homeButton.trailingAnchor, constant: 8),
             path.trailingAnchor.constraint(equalTo: header.trailingAnchor, constant: -10),
             path.centerYAnchor.constraint(equalTo: header.centerYAnchor),
             path.heightAnchor.constraint(equalToConstant: 20),
@@ -136,14 +154,31 @@ final class DirectoryTreeController: NSViewController, NSOutlineViewDataSource, 
             scroll.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             scroll.bottomAnchor.constraint(equalTo: view.bottomAnchor)
         ])
-        roots = [favorites, DirectoryNode(homeURL, title: "홈"),
-                 DirectoryNode(URL(fileURLWithPath: "/Volumes", isDirectory: true), title: "볼륨")]
-        outline.reloadData()
-        // Open Home one level only. Later explicit file/folder opens still reveal their ancestors.
-        let home = roots[1]
-        load(home) { [weak self, weak home] in
-            guard let self, let home else { return }
-            self.outline.expandItem(home, expandChildren: false)
+        if model.access.isSandboxed {
+            roots = [favorites, DirectoryNode(homeURL, title: L10n.text("Home"))]
+                + model.access.directoryURLs.filter { $0 != homeURL }.map { DirectoryNode($0) }
+            outline.reloadData()
+            expandAuthorizedHome()
+            model.access.$directoryURLs.dropFirst().receive(on: DispatchQueue.main).sink { [weak self] urls in
+                guard let self else { return }
+                for url in urls where !self.roots.contains(where: { $0.url == url }) {
+                    self.roots.append(DirectoryNode(url))
+                }
+                self.updatingSelection = true
+                self.outline.reloadData()
+                self.updatingSelection = false
+                self.expandAuthorizedHome()
+            }.store(in: &subscriptions)
+        } else {
+            roots = [favorites, DirectoryNode(homeURL, title: L10n.text("Home")),
+                     DirectoryNode(URL(fileURLWithPath: "/Volumes", isDirectory: true), title: L10n.text("Volumes"))]
+            outline.reloadData()
+            // Open Home one level only.
+            let home = roots[1]
+            load(home) { [weak self, weak home] in
+                guard let self, let home else { return }
+                self.outline.expandItem(home, expandChildren: false)
+            }
         }
         model.$favoriteURLs.removeDuplicates().receive(on: DispatchQueue.main).sink { [weak self] urls in
             self?.updateFavorites(urls)
@@ -155,6 +190,7 @@ final class DirectoryTreeController: NSViewController, NSOutlineViewDataSource, 
             guard let self else { return }
             self.up.isEnabled = self.model.canGoUp
             self.reload.isEnabled = self.model.canRefreshFolder
+            self.homeButton.isEnabled = !self.model.loading
         }.store(in: &subscriptions)
         model.folderRefreshRequested.sink { [weak self] url in
             guard let self else { return }
@@ -167,6 +203,17 @@ final class DirectoryTreeController: NSViewController, NSOutlineViewDataSource, 
             self?.forward.isEnabled = enabled
         }.store(in: &subscriptions)
     }
+
+    private func expandAuthorizedHome() {
+        guard model.access.hasAccess(to: homeURL),
+              let home = roots.first(where: { $0.url == homeURL }), home.children == nil else { return }
+        load(home) { [weak self, weak home] in
+            guard let self, let home else { return }
+            self.outline.expandItem(home, expandChildren: false)
+        }
+    }
+
+    @objc private func goHome(_ sender: Any?) { model.openFolder(homeURL) }
 
     @objc private func toggleClickedDirectory(_ sender: Any?) {
         toggleDirectory(at: outline.clickedRow)
@@ -203,8 +250,7 @@ final class DirectoryTreeController: NSViewController, NSOutlineViewDataSource, 
 
     private func show(_ folder: URL?) {
         revealGeneration += 1
-        path.stringValue = folder?.path ?? "폴더를 열어 주세요"
-        path.toolTip = folder?.path
+        path.update(folder)
         guard let folder else {
             updatingSelection = true
             outline.deselectAll(nil)
@@ -232,9 +278,17 @@ final class DirectoryTreeController: NSViewController, NSOutlineViewDataSource, 
     }
 
     private func addRoot(for url: URL) -> DirectoryNode {
+        if model.access.isSandboxed {
+            let node = DirectoryNode(url)
+            roots.append(node)
+            updatingSelection = true
+            outline.reloadData()
+            updatingSelection = false
+            return node
+        }
         // A filesystem root reveals every ancestor for folders outside Home and Volumes.
         if let existing = roots.first(where: { $0.url?.path == "/" }) { return existing }
-        let node = DirectoryNode(URL(fileURLWithPath: "/", isDirectory: true), title: "파일 시스템")
+        let node = DirectoryNode(URL(fileURLWithPath: "/", isDirectory: true), title: L10n.text("File System"))
         roots.append(node)
         updatingSelection = true
         outline.reloadData()
@@ -291,6 +345,8 @@ final class DirectoryTreeController: NSViewController, NSOutlineViewDataSource, 
 
     private func load(_ node: DirectoryNode, refresh: Bool = false, completion: (() -> Void)? = nil) {
         guard let url = node.url else { completion?(); return }
+        // Tree preloading must never request access or probe an unapproved location.
+        guard model.access.hasAccess(to: url) else { completion?(); return }
         if !refresh, !node.loading, node.children != nil { completion?(); return }
         if let completion { node.waiters.append(completion) }
         guard refresh || !node.loading else { return }
@@ -341,10 +397,10 @@ final class DirectoryTreeController: NSViewController, NSOutlineViewDataSource, 
     private func contextMenu(at row: Int) -> NSMenu? {
         guard row >= 0, let node = outline.item(atRow: row) as? DirectoryNode, let url = node.url else { return nil }
         let menu = NSMenu()
-        let favorite = NSMenuItem(title: model.isFavorite(url) ? "즐겨찾기 제거" : "즐겨찾기 추가", action: #selector(toggleFavorite(_:)), keyEquivalent: "")
+        let favorite = NSMenuItem(title: model.isFavorite(url) ? L10n.text("Remove from Favorites") : L10n.text("Add to Favorites"), action: #selector(toggleFavorite(_:)), keyEquivalent: "")
         favorite.target = self; favorite.representedObject = url
         menu.addItem(favorite)
-        let finder = NSMenuItem(title: "Finder에서 열기", action: #selector(openInFinder(_:)), keyEquivalent: "")
+        let finder = NSMenuItem(title: L10n.text("Open in Finder"), action: #selector(openInFinder(_:)), keyEquivalent: "")
         finder.target = self; finder.representedObject = url
         menu.addItem(finder)
         return menu
@@ -379,6 +435,8 @@ final class DirectoryTreeController: NSViewController, NSOutlineViewDataSource, 
     }
     func outlineView(_ outlineView: NSOutlineView, shouldExpandItem item: Any) -> Bool {
         if let node = item as? DirectoryNode, node.children == nil {
+            if let url = node.url, !model.access.hasAccess(to: url),
+               !model.access.ensureDirectory(url) { return false }
             // The outline owns disclosure state. Loading must not force an expansion later:
             // a capability query (or a collapse while I/O is pending) is not an expand action.
             load(node)
@@ -391,10 +449,10 @@ final class DirectoryTreeController: NSViewController, NSOutlineViewDataSource, 
         let identifier = NSUserInterfaceItemIdentifier("DirectoryCell")
         let cell = outlineView.makeView(withIdentifier: identifier, owner: self) as? BrowserFileCell ?? BrowserFileCell()
         cell.identifier = identifier
-        cell.showFolder(node.title, symbol: node.url == nil ? "star" : "folder")
+        cell.showFolder(node.title, symbol: node.url == nil ? "star" : node.url == homeURL ? "house" : "folder")
         cell.textField?.font = .systemFont(ofSize: 12, weight: node.url == nil ? .semibold : .regular)
         cell.textField?.textColor = node.url == nil ? .secondaryLabelColor : .labelColor
-        cell.toolTip = (node.url?.path ?? "폴더를 우클릭하여 즐겨찾기에 추가하세요") + (node.loadError.map { "\n" + $0 } ?? "")
+        cell.toolTip = (node.url?.path ?? L10n.text("Right-click a folder to add it to Favorites")) + (node.loadError.map { "\n" + $0 } ?? "")
         return cell
     }
     func outlineViewSelectionDidChange(_ notification: Notification) {
@@ -415,9 +473,9 @@ final class FileBrowserController: NSViewController, NSCollectionViewDataSource,
     private let modes = NSSegmentedControl()
     private let sort = NSPopUpButton(frame: .zero, pullsDown: false)
     private let direction = NSButton()
-    private let status = NSTextField(labelWithString: "폴더를 열어 주세요")
+    private let status = NSTextField(labelWithString: L10n.text("Open a folder"))
     private let spinner = NSProgressIndicator()
-    private let empty = NSTextField(labelWithString: "폴더를 열어 사진을 탐색하세요")
+    private let empty = NSTextField(labelWithString: L10n.text("Open a folder to browse photos"))
     private var files: [ImageFile] = []
     private var subscriptions = Set<AnyCancellable>()
     private var syncing = false
@@ -435,23 +493,23 @@ final class FileBrowserController: NSViewController, NSCollectionViewDataSource,
     override func loadView() {
         view = NSView()
         modes.segmentCount = 3
-        for (i, entry) in [("square.grid.3x3", "작은 썸네일"), ("square.grid.2x2", "큰 썸네일"), ("list.bullet", "목록")].enumerated() {
+        for (i, entry) in [("square.grid.3x3", L10n.text("Small Thumbnails")), ("square.grid.2x2", L10n.text("Large Thumbnails")), ("list.bullet", L10n.text("List"))].enumerated() {
             modes.setImage(NSImage(systemSymbolName: entry.0, accessibilityDescription: entry.1), forSegment: i)
             modes.setToolTip(entry.1, forSegment: i)
             modes.setWidth(28, forSegment: i)
         }
         modes.segmentStyle = .texturedRounded
         modes.target = self; modes.action = #selector(changeMode(_:))
-        modes.setAccessibilityLabel("파일 표시 방법")
-        sort.addItems(withTitles: ["이름", "수정일", "크기"])
+        modes.setAccessibilityLabel(L10n.text("File view mode"))
+        sort.addItems(withTitles: [L10n.text("Name"), L10n.text("Date Modified"), L10n.text("Size")])
         sort.target = self; sort.action = #selector(changeSort(_:))
-        sort.setAccessibilityLabel("정렬 기준")
+        sort.setAccessibilityLabel(L10n.text("Sort by"))
         direction.bezelStyle = .texturedRounded
         direction.imagePosition = .imageOnly
         direction.target = self; direction.action = #selector(reverseSort(_:))
         let toolbar = NSStackView(views: [modes, sort, direction])
         toolbar.orientation = .horizontal; toolbar.spacing = 6; toolbar.alignment = .centerY
-        sort.widthAnchor.constraint(equalToConstant: 80).isActive = true
+        sort.widthAnchor.constraint(equalToConstant: 110).isActive = true
         direction.widthAnchor.constraint(equalToConstant: 30).isActive = true
         collection.collectionViewLayout = layout
         collection.autoresizingMask = [.width]
@@ -462,7 +520,7 @@ final class FileBrowserController: NSViewController, NSCollectionViewDataSource,
         collection.allowsEmptySelection = true
         collection.dataSource = self; collection.delegate = self
         collection.backgroundColors = [.controlBackgroundColor]
-        collection.setAccessibilityLabel("폴더와 사진 썸네일")
+        collection.setAccessibilityLabel(L10n.text("Folder and photo thumbnails"))
         collection.onPointer = { [weak self] index in self?.prefer(index) }
         collection.onSelection = { [weak self] in self?.selectionChanged() }
         collection.onReturn = { [weak self] in self?.model.activateSelection() }
@@ -471,7 +529,7 @@ final class FileBrowserController: NSViewController, NSCollectionViewDataSource,
         collection.onContext = { [weak self] index in self?.contextMenu(at: index) }
         collection.onArrow = { [weak self] forward in self?.keyboardSelection(forward: forward) }
 
-        for (id, title, width) in [("name", "이름", CGFloat(150)), ("size", "크기", 65), ("date", "수정일", 110)] {
+        for (id, title, width) in [("name", L10n.text("Name"), CGFloat(150)), ("size", L10n.text("Size"), 65), ("date", L10n.text("Date Modified"), 110)] {
             let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier(id))
             column.title = title; column.width = width; column.minWidth = id == "name" ? 80 : 55
             column.sortDescriptorPrototype = NSSortDescriptor(key: id, ascending: true)
@@ -488,7 +546,7 @@ final class FileBrowserController: NSViewController, NSCollectionViewDataSource,
         table.onCommand = { [weak self] event in self?.handleCommand(event) ?? false }
         table.onContext = { [weak self] index in self?.contextMenu(at: index) }
         table.onArrow = { [weak self] forward in self?.keyboardSelection(forward: forward) }
-        table.setAccessibilityLabel("폴더와 사진 파일 목록")
+        table.setAccessibilityLabel(L10n.text("Folder and photo list"))
 
         scroll.hasVerticalScroller = true; scroll.autohidesScrollers = true
         scroll.drawsBackground = true; scroll.backgroundColor = .controlBackgroundColor
@@ -540,9 +598,9 @@ final class FileBrowserController: NSViewController, NSCollectionViewDataSource,
         sort.selectItem(at: FileSortKey.allCases.firstIndex(of: model.sortKey) ?? 0)
         let descriptor = NSSortDescriptor(key: model.sortKey.rawValue, ascending: model.ascending)
         if table.sortDescriptors != [descriptor] { table.sortDescriptors = [descriptor] }
-        direction.image = NSImage(systemSymbolName: model.ascending ? "arrow.up" : "arrow.down", accessibilityDescription: model.ascending ? "오름차순" : "내림차순")
-        direction.toolTip = model.ascending ? "오름차순 — 클릭하여 내림차순" : "내림차순 — 클릭하여 오름차순"
-        direction.setAccessibilityLabel(model.ascending ? "오름차순" : "내림차순")
+        direction.image = NSImage(systemSymbolName: model.ascending ? "arrow.up" : "arrow.down", accessibilityDescription: model.ascending ? L10n.text("Ascending") : L10n.text("Descending"))
+        direction.toolTip = model.ascending ? L10n.text("Ascending — click for descending") : L10n.text("Descending — click for ascending")
+        direction.setAccessibilityLabel(model.ascending ? L10n.text("Ascending") : L10n.text("Descending"))
         if activeMode != model.viewMode {
             activeMode = model.viewMode
             let isList = model.viewMode == .list
@@ -567,9 +625,9 @@ final class FileBrowserController: NSViewController, NSCollectionViewDataSource,
         }
         lastRevealedURL = model.primarySelectionURL
         empty.isHidden = !files.isEmpty
-        empty.stringValue = model.loading ? "사진 목록을 읽는 중…" : (model.folder == nil ? "폴더를 열어 사진을 탐색하세요" : "이 폴더에 표시할 항목이 없습니다")
+        empty.stringValue = model.loading ? L10n.text("Reading photo list…") : (model.folder == nil ? L10n.text("Open a folder to browse photos") : L10n.text("No items to display in this folder"))
         let folderCount = files.filter(\.isDirectory).count
-        status.stringValue = model.loading ? "불러오는 중…" : "폴더 \(folderCount)개 · 사진 \(files.count - folderCount)개" + (model.selection.isEmpty ? "" : " · \(model.selection.count)개 선택")
+        status.stringValue = model.loading ? L10n.text("Loading…") : L10n.format("%ld folders · %ld photos", folderCount, files.count - folderCount) + (model.selection.isEmpty ? "" : L10n.format(" · %ld selected", model.selection.count))
         if model.loading { spinner.startAnimation(nil) } else { spinner.stopAnimation(nil) }
         syncing = false
     }
@@ -615,13 +673,13 @@ final class FileBrowserController: NSViewController, NSCollectionViewDataSource,
             selectionChanged()
         }
         let menu = NSMenu()
-        for (title, selector) in [("복사", #selector(copy(_:))), ("붙여넣기", #selector(paste(_:))), ("휴지통으로 이동", #selector(moveToTrash(_:)))] {
+        for (title, selector) in [(L10n.text("Copy"), #selector(copy(_:))), (L10n.text("Paste"), #selector(paste(_:))), (L10n.text("Move to Trash"), #selector(moveToTrash(_:)))] {
             let item = NSMenuItem(title: title, action: selector, keyEquivalent: "")
             item.target = self; menu.addItem(item)
         }
         if let index, files.indices.contains(index) {
             menu.addItem(.separator())
-            let finder = NSMenuItem(title: "Finder에서 열기", action: #selector(revealInFinder(_:)), keyEquivalent: "")
+            let finder = NSMenuItem(title: L10n.text("Open in Finder"), action: #selector(revealInFinder(_:)), keyEquivalent: "")
             finder.target = self
             finder.representedObject = files.filter { model.selection.contains($0.url) }.map(\.url)
             menu.addItem(finder)
@@ -777,8 +835,8 @@ private final class BrowserThumbnailItem: NSCollectionViewItem {
     func show(_ file: ImageFile, pixels: Int) {
         _ = view
         representedURL = file.url; textField?.stringValue = file.name; view.toolTip = file.name
-        imageView?.image = NSImage(systemSymbolName: file.isDirectory ? "folder.fill" : "photo", accessibilityDescription: file.isDirectory ? "폴더" : nil)
-        view.setAccessibilityLabel(file.isDirectory ? "폴더: \(file.name)" : file.name)
+        imageView?.image = NSImage(systemSymbolName: file.isDirectory ? "folder.fill" : "photo", accessibilityDescription: file.isDirectory ? L10n.text("Folder") : nil)
+        view.setAccessibilityLabel(file.isDirectory ? L10n.format("Folder: %@", file.name) : file.name)
         updateSelection()
         guard !file.isDirectory else { return }
         ThumbnailService.shared.image(for: file.url, pixelSize: pixels) { [weak self] image in

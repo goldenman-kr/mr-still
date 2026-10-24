@@ -91,7 +91,7 @@ final class FolderBrowsingTests: XCTestCase {
         XCTAssertEqual(model.primarySelectionURL, album.url)
         XCTAssertFalse(model.canModifySelection)
         model.copySelection()
-        XCTAssertTrue(model.statusMessage.contains("이미지 파일"))
+        XCTAssertEqual(model.statusMessage, L10n.text("Select image files to copy"))
         model.trashSelection()
         XCTAssertFalse(model.working)
         XCTAssertTrue(FileManager.default.fileExists(atPath: album.url.path))
@@ -222,7 +222,7 @@ final class FolderBrowsingTests: XCTestCase {
         }
         model.files = []
         for item in popup.itemArray { XCTAssertTrue(controller.validateMenuItem(item)) }
-        let direction = try XCTUnwrap(descendants(controller.view).compactMap { $0 as? NSButton }.first { $0.toolTip?.contains("클릭하여") == true })
+        let direction = try XCTUnwrap(descendants(controller.view).compactMap { $0 as? NSButton }.first { $0.toolTip == L10n.text("Ascending — click for descending") || $0.toolTip == L10n.text("Descending — click for ascending") })
         let ascending = model.ascending
         direction.performClick(nil)
         XCTAssertEqual(model.ascending, !ascending)

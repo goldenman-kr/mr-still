@@ -3,7 +3,8 @@
 set -eu
 cd "${0:A:h:h}"
 app_path="${1:-build/Distribution/Build/Products/Release/Mr. Still.app}"
-output_path="${2:-build/Releases/Mr.Still-1.0.0-universal.dmg}"
+version=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app_path/Contents/Info.plist")
+output_path="${2:-build/Releases/Mr.Still-${version}-universal.dmg}"
 if [[ ! -d "$app_path" || -e "$output_path" ]]; then
   print -u2 'App must exist and output DMG must not already exist.'
   exit 1

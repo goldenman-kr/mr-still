@@ -9,9 +9,9 @@ public enum PhotoServiceError: LocalizedError {
 
     public var errorDescription: String? {
         switch self {
-        case .unreadableImage(let url): return "이미지를 읽을 수 없습니다: \(url.lastPathComponent)"
-        case .invalidImageDimensions(let url): return "이미지 크기를 확인할 수 없습니다: \(url.lastPathComponent)"
-        case .invalidPixelLimit: return "이미지 표시 크기는 0보다 커야 합니다."
+        case .unreadableImage(let url): return L10n.format("Could not read image: %@", url.lastPathComponent)
+        case .invalidImageDimensions(let url): return L10n.format("Could not determine image dimensions: %@", url.lastPathComponent)
+        case .invalidPixelLimit: return L10n.text("Image display size must be greater than zero.")
         }
     }
 }
@@ -203,7 +203,7 @@ public enum FileOperations {
         var result = FileOperationResult()
         var isDirectory: ObjCBool = false
         guard directory.isFileURL, manager.fileExists(atPath: directory.path, isDirectory: &isDirectory), isDirectory.boolValue else {
-            result.failures = urls.map { "\($0.lastPathComponent): 대상 폴더가 없습니다." }
+            result.failures = urls.map { L10n.format("%@: Destination folder does not exist.", $0.lastPathComponent) }
             return result
         }
         for source in urls {
@@ -223,7 +223,7 @@ public enum FileOperations {
                         suffix += 1
                         continue
                     }
-                    let reason = exists ? "동일한 이름이 있어 건너뛰었습니다." : error.localizedDescription
+                    let reason = exists ? L10n.text("Skipped because a file with the same name exists.") : error.localizedDescription
                     result.failures.append("\(source.lastPathComponent): \(reason)")
                     break
                 }

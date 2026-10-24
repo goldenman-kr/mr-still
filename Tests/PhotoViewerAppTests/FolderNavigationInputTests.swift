@@ -1,5 +1,6 @@
 import XCTest
 import AppKit
+import PhotoViewerCore
 @testable import PhotoViewer
 
 private final class SideButtonEvent: NSEvent {
@@ -67,12 +68,12 @@ final class FolderNavigationInputTests: XCTestCase {
         let outline = try XCTUnwrap(descendant(NSOutlineView.self, in: controller.tree.view))
         let collection = try XCTUnwrap(descendant(NSCollectionView.self, in: controller.browser.view))
         let header = try XCTUnwrap(descendant(NSBox.self, in: controller.tree.view))
-        let back = try XCTUnwrap(button(named: "폴더 뒤로", in: header))
-        let forward = try XCTUnwrap(button(named: "폴더 앞으로", in: header))
+        let back = try XCTUnwrap(button(named: L10n.format("Folder navigation: %@", L10n.text("Back")), in: header))
+        let forward = try XCTUnwrap(button(named: L10n.format("Folder navigation: %@", L10n.text("Forward")), in: header))
         controller.tree.view.layoutSubtreeIfNeeded()
         XCTAssertLessThanOrEqual(back.frame.maxX, forward.frame.minX)
-        let up = try XCTUnwrap(button(named: "폴더 위로", in: header))
-        let reload = try XCTUnwrap(button(named: "폴더 새로고침", in: header))
+        let up = try XCTUnwrap(button(named: L10n.format("Folder navigation: %@", L10n.text("Up")), in: header))
+        let reload = try XCTUnwrap(button(named: L10n.format("Folder navigation: %@", L10n.text("Refresh")), in: header))
         for button in [back, forward, up, reload] { XCTAssertFalse(button.isBordered) }
         XCTAssertLessThanOrEqual(forward.frame.maxX, up.frame.minX)
         XCTAssertLessThanOrEqual(up.frame.maxX, reload.frame.minX)

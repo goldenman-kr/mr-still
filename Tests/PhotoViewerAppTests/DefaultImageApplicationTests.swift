@@ -53,11 +53,11 @@ final class DefaultImageApplicationTests: XCTestCase {
         XCTAssertEqual(result.successfulTypes.count, 5)
         XCTAssertEqual(result.failures.map(\.type), [.png, .heif])
         XCTAssertTrue(result.successfulTypes.contains(.gif), "A failed earlier format must not stop the remaining formats")
-        XCTAssertTrue(result.message.contains("일부"))
+        XCTAssertEqual(result.message, L10n.text("The default app was set for some image formats."))
         XCTAssertTrue(result.details.contains("PNG"))
         XCTAssertTrue(result.details.contains("HEIF"))
         XCTAssertFalse(result.failures[0].reason.isEmpty)
-        XCTAssertTrue(result.failures[1].reason.contains("확인할 수 없습니다"))
+        XCTAssertEqual(result.failures[1].reason, L10n.text("macOS could not confirm the default app change."))
     }
 
     func testSupportedDefaultTypesMatchAppDocumentDeclarations() throws {

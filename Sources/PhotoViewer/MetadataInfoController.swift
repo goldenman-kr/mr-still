@@ -13,7 +13,7 @@ final class MetadataInfoController: NSViewController, NSTableViewDataSource, NST
         let value: String
         init(entry: MetadataEntry) {
             let components = entry.key.components(separatedBy: " / ")
-            group = components.count > 1 ? components.dropLast().joined(separator: " / ") : "일반"
+            group = components.count > 1 ? components.dropLast().joined(separator: " / ") : L10n.text("General")
             item = components.last ?? entry.key
             value = entry.value
         }
@@ -21,9 +21,9 @@ final class MetadataInfoController: NSViewController, NSTableViewDataSource, NST
     private(set) var rows: [Row] = []
     let table = NSTableView()
     let valueText = NSTextView()
-    private let summary = NSTextField(labelWithString: "메타데이터 불러오는 중…")
-    private let valueTitle = NSTextField(labelWithString: "항목을 선택하면 전체 값을 볼 수 있습니다.")
-    private let copyButton = NSButton(title: "값 복사", target: nil, action: nil)
+    private let summary = NSTextField(labelWithString: L10n.text("Loading metadata…"))
+    private let valueTitle = NSTextField(labelWithString: L10n.text("Select an item to view its full value."))
+    private let copyButton = NSButton(title: L10n.text("Copy Value"), target: nil, action: nil)
 
     override func loadView() {
         view = NSView(frame: NSRect(x: 0, y: 0, width: 620, height: 480))
@@ -40,8 +40,8 @@ final class MetadataInfoController: NSViewController, NSTableViewDataSource, NST
         table.rowHeight = 25
         table.columnAutoresizingStyle = .lastColumnOnlyAutoresizingStyle
         table.allowsEmptySelection = true
-        table.setAccessibilityLabel("이미지 메타데이터")
-        for (identifier, title, width) in [("group", "그룹", 150.0), ("item", "항목", 150.0), ("value", "값", 280.0)] {
+        table.setAccessibilityLabel(L10n.text("Image metadata"))
+        for (identifier, title, width) in [("group", L10n.text("Group"), 150.0), ("item", L10n.text("Item"), 150.0), ("value", L10n.text("Value"), 280.0)] {
             let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier(identifier))
             column.title = title
             column.width = width
@@ -62,7 +62,7 @@ final class MetadataInfoController: NSViewController, NSTableViewDataSource, NST
         valueText.isHorizontallyResizable = false
         valueText.autoresizingMask = .width
         valueText.textContainer?.widthTracksTextView = true
-        valueText.setAccessibilityLabel("선택된 메타데이터 전체 값")
+        valueText.setAccessibilityLabel(L10n.text("Full value of selected metadata"))
         valueScroll.documentView = valueText
         valueTitle.font = .systemFont(ofSize: 11, weight: .medium)
         valueTitle.lineBreakMode = .byTruncatingMiddle
@@ -96,7 +96,7 @@ final class MetadataInfoController: NSViewController, NSTableViewDataSource, NST
     func setEntries(_ entries: [MetadataEntry]) {
         loadViewIfNeeded()
         rows = entries.map(Row.init)
-        summary.stringValue = entries.isEmpty ? "메타데이터가 없습니다." : "이미지 정보 · \(rows.count)개 항목"
+        summary.stringValue = entries.isEmpty ? L10n.text("No metadata available.") : L10n.format("Image Info · %ld items", rows.count)
         table.reloadData()
         if !rows.isEmpty { table.selectRowIndexes(IndexSet(integer: 0), byExtendingSelection: false) }
         updateSelectedValue()
@@ -104,7 +104,7 @@ final class MetadataInfoController: NSViewController, NSTableViewDataSource, NST
 
     func showError(_ message: String) {
         setEntries([])
-        summary.stringValue = "정보를 읽을 수 없습니다."
+        summary.stringValue = L10n.text("Could not read image info.")
         valueText.string = message
     }
 
@@ -126,7 +126,7 @@ final class MetadataInfoController: NSViewController, NSTableViewDataSource, NST
         let index = table.selectedRow
         copyButton.isEnabled = rows.indices.contains(index)
         guard rows.indices.contains(index) else {
-            valueTitle.stringValue = "항목을 선택하면 전체 값을 볼 수 있습니다."
+            valueTitle.stringValue = L10n.text("Select an item to view its full value.")
             valueText.string = ""
             return
         }

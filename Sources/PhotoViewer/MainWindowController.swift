@@ -302,10 +302,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSSplitV
     private func showError(_ message: String) {
         guard let window, window.attachedSheet == nil else { return }
         let alert = NSAlert()
-        alert.messageText = "작업을 완료하지 못했습니다"
+        alert.messageText = L10n.text("The operation could not be completed")
         alert.informativeText = message
         alert.alertStyle = .warning
-        alert.addButton(withTitle: "확인")
+        alert.addButton(withTitle: L10n.text("OK"))
         model.errorMessage = nil
         alert.beginSheetModal(for: window)
     }

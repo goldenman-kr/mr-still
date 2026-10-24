@@ -6,6 +6,7 @@ DerivedData/
 *.app/
 *.dSYM/
 *.xcarchive/
+*.dmg
 
 # macOS and Xcode user state
 .DS_Store

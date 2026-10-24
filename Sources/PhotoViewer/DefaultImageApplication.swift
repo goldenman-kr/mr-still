@@ -14,18 +14,18 @@ struct DefaultImageApplicationResult {
     var failures: [Failure] = []
 
     var message: String {
-        if failures.isEmpty { return "Mr. Still를 기본 이미지 앱으로 설정했습니다." }
-        if successfulTypes.isEmpty { return "기본 이미지 앱 설정을 완료하지 못했습니다." }
-        return "일부 이미지 형식의 기본 앱을 설정했습니다."
+        if failures.isEmpty { return L10n.text("Mr. Still is now the default image app.") }
+        if successfulTypes.isEmpty { return L10n.text("Could not set the default image app.") }
+        return L10n.text("The default app was set for some image formats.")
     }
 
     var details: String {
         var lines: [String] = []
         if !successfulTypes.isEmpty {
-            lines.append("설정 완료: " + successfulTypes.map(Self.name).joined(separator: ", "))
+            lines.append(L10n.text("Updated: ") + successfulTypes.map(Self.name).joined(separator: ", "))
         }
         if !failures.isEmpty {
-            lines.append("설정하지 못한 형식:")
+            lines.append(L10n.text("Formats that could not be updated:"))
             lines += failures.map { "\(Self.name($0.type)): \($0.reason)" }
         }
         return lines.joined(separator: "\n")
@@ -66,7 +66,7 @@ struct DefaultImageApplication {
                     try await setApplication(applicationURL, type)
                 }
                 guard application(type)?.resolvingSymlinksInPath().standardizedFileURL == target else {
-                    result.failures.append(.init(type: type, reason: "macOS에서 기본 앱 변경을 확인할 수 없습니다."))
+                    result.failures.append(.init(type: type, reason: L10n.text("macOS could not confirm the default app change.")))
                     continue
                 }
                 result.successfulTypes.append(type)

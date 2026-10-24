@@ -10,7 +10,7 @@ import PhotoViewerCore
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private var controller: MainWindowController!
     private let model = BrowserModel()
-    private var recentMenu = NSMenu(title: "최근 항목")
+    private var recentMenu = NSMenu(title: L10n.text("Open Recent"))
     private var subscriptions: Set<AnyCancellable> = []
     private var pendingOpen: URL?
     private var settingDefaultImageApplication = false
@@ -33,6 +33,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         if let pendingOpen { model.openFile(pendingOpen) }
         else if let index = CommandLine.arguments.firstIndex(of: "--open"), CommandLine.arguments.indices.contains(index + 1) {
             model.openFile(URL(fileURLWithPath: CommandLine.arguments[index + 1]))
+        } else if model.access.isSandboxed && model.access.directoryURLs.isEmpty {
+            choose(isFolder: true)
         }
     }
 
@@ -41,6 +43,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         if controller == nil { pendingOpen = url }
         else { controller.showWindow(nil); model.openFile(url); NSApp.activate(ignoringOtherApps: true) }
     }
+
+    func applicationWillTerminate(_ notification: Notification) { model.access.stopAll() }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
@@ -63,61 +67,64 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private func buildMenu() {
         let main = NSMenu()
         let app = menu("Mr. Still", in: main)
-        item("Mr. Still 정보", #selector(about), "", in: app)
+        item(L10n.text("About Mr. Still"), #selector(about), "", in: app)
         app.addItem(.separator())
-        let services = menu("서비스", in: app); NSApp.servicesMenu = services
+        let services = menu(L10n.text("Services"), in: app); NSApp.servicesMenu = services
         app.addItem(.separator())
-        item("Mr. Still 가리기", #selector(NSApplication.hide(_:)), "h", in: app, target: NSApp)
-        item("기타 가리기", #selector(NSApplication.hideOtherApplications(_:)), "h", in: app, modifiers: [.command, .option], target: NSApp)
-        item("모두 보기", #selector(NSApplication.unhideAllApplications(_:)), "", in: app, target: NSApp)
+        item(L10n.text("Hide Mr. Still"), #selector(NSApplication.hide(_:)), "h", in: app, target: NSApp)
+        item(L10n.text("Hide Others"), #selector(NSApplication.hideOtherApplications(_:)), "h", in: app, modifiers: [.command, .option], target: NSApp)
+        item(L10n.text("Show All"), #selector(NSApplication.unhideAllApplications(_:)), "", in: app, target: NSApp)
         app.addItem(.separator())
-        item("Mr. Still 종료", #selector(NSApplication.terminate(_:)), "q", in: app, target: NSApp)
+        item(L10n.text("Quit Mr. Still"), #selector(NSApplication.terminate(_:)), "q", in: app, target: NSApp)
 
-        let file = menu("파일", in: main)
-        item("파일 열기…", #selector(openFile), "o", in: file)
-        item("폴더 열기…", #selector(openFolder), "o", in: file, modifiers: [.command, .shift])
-        recentMenu = menu("최근 항목", in: file)
+        let file = menu(L10n.text("File"), in: main)
+        item(L10n.text("Open File…"), #selector(openFile), "o", in: file)
+        item(L10n.text("Open Folder…"), #selector(openFolder), "o", in: file, modifiers: [.command, .shift])
+        recentMenu = menu(L10n.text("Open Recent"), in: file)
         file.addItem(.separator())
-        item("기본 이미지 앱으로 설정", #selector(setDefaultImageApplication), "", in: file)
+        item(L10n.text("Set as Default Image App"), #selector(setDefaultImageApplication), "", in: file)
         file.addItem(.separator())
-        item("인쇄…", #selector(printCurrent), "p", in: file)
+        item(L10n.text("Print…"), #selector(printCurrent), "p", in: file)
         file.addItem(.separator())
-        item("윈도우 닫기", #selector(closeWindow), "w", in: file)
+        item(L10n.text("Close Window"), #selector(closeWindow), "w", in: file)
 
-        let edit = menu("편집", in: main)
-        let undo = item("실행 취소", Selector(("undo:")), "z", in: edit); undo.target = nil
-        let redo = item("실행 복귀", Selector(("redo:")), "z", in: edit, modifiers: [.command, .shift]); redo.target = nil
+        let edit = menu(L10n.text("Edit"), in: main)
+        let undo = item(L10n.text("Undo"), Selector(("undo:")), "z", in: edit); undo.target = nil
+        let redo = item(L10n.text("Redo"), Selector(("redo:")), "z", in: edit, modifiers: [.command, .shift]); redo.target = nil
         edit.addItem(.separator())
-        let copy = item("복사", #selector(copyFiles), "c", in: edit); copy.target = self
-        item("붙여넣기", #selector(pasteFiles), "v", in: edit)
-        item("전체 선택", #selector(selectAllFiles), "a", in: edit)
+        let copy = item(L10n.text("Copy"), #selector(copyFiles), "c", in: edit); copy.target = self
+        item(L10n.text("Paste"), #selector(pasteFiles), "v", in: edit)
+        item(L10n.text("Select All"), #selector(selectAllFiles), "a", in: edit)
         edit.addItem(.separator())
-        item("휴지통으로 이동", #selector(trashFiles), "\u{8}", in: edit)
+        item(L10n.text("Move to Trash"), #selector(trashFiles), "\u{8}", in: edit)
 
-        let go = menu("이동", in: main)
-        item("뒤로", #selector(goBack), String(UnicodeScalar(NSLeftArrowFunctionKey)!), in: go, modifiers: .option)
-        item("앞으로", #selector(goForward), String(UnicodeScalar(NSRightArrowFunctionKey)!), in: go, modifiers: .option)
-        item("위로", #selector(goUp), "", in: go)
-        item("새로고침", #selector(refreshFolder), "", in: go)
+        let go = menu(L10n.text("Go"), in: main)
+        item(L10n.text("Back"), #selector(goBack), String(UnicodeScalar(NSLeftArrowFunctionKey)!), in: go, modifiers: .option)
+        item(L10n.text("Forward"), #selector(goForward), String(UnicodeScalar(NSRightArrowFunctionKey)!), in: go, modifiers: .option)
+        item(L10n.text("Up"), #selector(goUp), "", in: go)
+        item(L10n.text("Refresh"), #selector(refreshFolder), "", in: go)
 
-        let view = menu("보기", in: main)
-        item("탐색기 모드", #selector(browserMode), "1", in: view)
-        item("슬라이드 모드", #selector(slideMode), "2", in: view)
+        let view = menu(L10n.text("View"), in: main)
+        item(L10n.text("Browser Mode"), #selector(browserMode), "1", in: view)
+        item(L10n.text("Slide Mode"), #selector(slideMode), "2", in: view)
         view.addItem(.separator())
-        item("화면에 맞추기", #selector(fit), "0", in: view)
-        item("확대", #selector(zoomIn), "+", in: view)
-        let zoomAlias = item("확대", #selector(zoomIn), "=", in: view)
+        item(L10n.text("Fit to Window"), #selector(fit), "0", in: view)
+        item(L10n.text("Zoom In"), #selector(zoomIn), "+", in: view)
+        let zoomAlias = item(L10n.text("Zoom In"), #selector(zoomIn), "=", in: view)
         zoomAlias.isHidden = true; zoomAlias.allowsKeyEquivalentWhenHidden = true
-        item("축소", #selector(zoomOut), "-", in: view)
-        item("이미지 정보", #selector(info), "i", in: view, modifiers: [])
+        item(L10n.text("Zoom Out"), #selector(zoomOut), "-", in: view)
+        item(L10n.text("Image Info"), #selector(info), "i", in: view, modifiers: [])
         view.addItem(.separator())
-        item("전체화면 전환", #selector(fullscreen), "f", in: view, modifiers: [])
-        let fullscreenAlias = item("전체화면 전환", #selector(fullscreen), "f", in: view)
+        item(L10n.text("Toggle Full Screen"), #selector(fullscreen), "f", in: view, modifiers: [])
+        let fullscreenAlias = item(L10n.text("Toggle Full Screen"), #selector(fullscreen), "f", in: view)
         fullscreenAlias.isHidden = true; fullscreenAlias.allowsKeyEquivalentWhenHidden = true
 
-        let windowMenu = menu("윈도우", in: main)
-        item("최소화", #selector(NSWindow.performMiniaturize(_:)), "m", in: windowMenu, target: nil).target = nil
+        let windowMenu = menu(L10n.text("Window"), in: main)
+        item(L10n.text("Minimize"), #selector(NSWindow.performMiniaturize(_:)), "m", in: windowMenu, target: nil).target = nil
         NSApp.windowsMenu = windowMenu
+        let help = menu(L10n.text("Help"), in: main)
+        item(L10n.text("Privacy Policy"), #selector(privacyPolicy), "", in: help)
+        NSApp.helpMenu = help
         NSApp.mainMenu = main
     }
 
@@ -128,7 +135,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             entry.representedObject = url; entry.toolTip = url.path
         }
         if !urls.isEmpty { recentMenu.addItem(.separator()) }
-        item("최근 항목 지우기", #selector(clearRecent), "", in: recentMenu)
+        item(L10n.text("Clear Menu"), #selector(clearRecent), "", in: recentMenu)
     }
 
     @objc private func openFile() { choose(isFolder: false) }
@@ -137,19 +144,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         let panel = NSOpenPanel()
         panel.canChooseDirectories = isFolder; panel.canChooseFiles = !isFolder
         panel.allowsMultipleSelection = false
-        panel.prompt = "열기"
+        panel.prompt = L10n.text("Open")
         panel.directoryURL = model.folder
         if !isFolder { panel.allowedContentTypes = [.image] }
-        if panel.runModal() == .OK, let url = panel.url { model.openFile(url) }
+        if panel.runModal() == .OK, let url = panel.url {
+            if isFolder && !model.access.authorizeDirectory(url) {
+                model.errorMessage = L10n.text("Folder access was not granted. Use File > Open Folder to choose it again.")
+                return
+            }
+            model.openFile(url)
+        }
     }
     @objc private func openRecent(_ sender: NSMenuItem) { if let url = sender.representedObject as? URL { model.openFile(url) } }
     @objc private func clearRecent() { model.clearRecentItems() }
     @objc private func setDefaultImageApplication() {
         guard !settingDefaultImageApplication else { return }
+#if APP_STORE
+        showDefaultApplicationResult(message: L10n.text("Choose the default image app in Finder"),
+            details: L10n.text("In Finder, select an image and choose Get Info. Under Open with, choose Mr. Still, then click Change All. Repeat for each image format you use."), warning: false)
+        if let url = model.currentURL { NSWorkspace.shared.activateFileViewerSelecting([url]) }
+        return
+#else
         let applicationURL = Bundle.main.bundleURL
         guard applicationURL.pathExtension == "app" else {
-            showDefaultApplicationResult(message: "Mr. Still 앱에서 실행해 주세요.",
-                                         details: "기본 앱 설정은 빌드된 Mr. Still.app에서 사용할 수 있습니다.", warning: true)
+            showDefaultApplicationResult(message: L10n.text("Please run this from the Mr. Still app."),
+                                         details: L10n.text("Default app settings are available in the built Mr. Still.app."), warning: true)
             return
         }
         settingDefaultImageApplication = true
@@ -158,6 +177,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             settingDefaultImageApplication = false
             showDefaultApplicationResult(message: result.message, details: result.details, warning: !result.failures.isEmpty)
         }
+#endif
     }
 
     private func showDefaultApplicationResult(message: String, details: String, warning: Bool) {
@@ -166,7 +186,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         alert.alertStyle = warning ? .warning : .informational
         alert.messageText = message
         alert.informativeText = details
-        alert.addButton(withTitle: "확인")
+        alert.addButton(withTitle: L10n.text("OK"))
         alert.beginSheetModal(for: window)
     }
     @objc private func printCurrent() { controller.viewer.printImage() }
@@ -183,7 +203,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     @objc private func info() { controller.viewer.toggleInfo() }
     @objc private func fullscreen() { controller.toggleFullscreen() }
     @objc private func copyFiles() {
-        if let text = controller.window?.firstResponder as? NSTextView { text.copy(nil) } else { model.copySelection() }
+        if let text = controller.window?.firstResponder as? NSTextView { text.copy(nil) }
+        else if controller.viewer.acceptsZoomCommands { controller.viewer.copyImage() }
+        else { model.copySelection() }
     }
     @objc private func pasteFiles() {
         if let text = controller.window?.firstResponder as? NSTextView, text.isEditable { text.paste(nil) } else { model.pasteFiles() }
@@ -193,8 +215,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         else { model.select(Set(model.files.map(\.url)), primary: model.currentURL ?? model.files.last?.url) }
     }
     @objc private func trashFiles() { model.trashSelection() }
+    @objc private func privacyPolicy() {
+        let language = Bundle.main.preferredLocalizations.first == "ko" ? "ko" : "en"
+        guard let url = Bundle.main.url(forResource: "privacy-policy-" + language, withExtension: "html") else { return }
+        NSWorkspace.shared.open(url)
+    }
     @objc private func about() {
-        NSApp.orderFrontStandardAboutPanel(options: [.applicationName: "Mr. Still", .applicationVersion: "1.0", .credits: NSAttributedString(string: "가볍게 탐색하고, 사진에 집중하세요.")])
+        NSApp.orderFrontStandardAboutPanel(options: [.applicationName: "Mr. Still", .applicationVersion: "1.0", .credits: NSAttributedString(string: L10n.text("Browse lightly. Focus on your photos."))])
     }
 
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
@@ -205,13 +232,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         case #selector(goUp): return model.canGoUp
         case #selector(refreshFolder): return model.canRefreshFolder
         case #selector(setDefaultImageApplication):
-            menuItem.title = settingDefaultImageApplication ? "기본 이미지 앱 설정 중…" : "기본 이미지 앱으로 설정"
+            menuItem.title = settingDefaultImageApplication ? L10n.text("Setting Default Image App…") : L10n.text("Set as Default Image App")
             return !settingDefaultImageApplication
         case #selector(zoomIn), #selector(zoomOut): return model.currentURL != nil && controller.viewer.acceptsZoomCommands
         case #selector(info): return model.currentURL != nil && !((controller.window?.firstResponder as? NSTextView)?.isEditable == true)
         case #selector(fullscreen): return !((controller.window?.firstResponder as? NSTextView)?.isEditable == true)
         case #selector(printCurrent), #selector(fit), #selector(slideMode): return model.currentURL != nil
-        case #selector(copyFiles): return controller.window?.firstResponder is NSTextView || model.canModifySelection
+        case #selector(copyFiles):
+            if controller.window?.firstResponder is NSTextView { return true }
+            return controller.viewer.acceptsZoomCommands ? controller.viewer.canCopyImage : model.canModifySelection
         case #selector(trashFiles): return model.canModifySelection && !model.working && !(controller.window?.firstResponder is NSTextView)
         case #selector(pasteFiles): return (controller.window?.firstResponder as? NSTextView)?.isEditable == true || (model.folder != nil && !model.working)
         case #selector(browserMode): menuItem.state = model.slideMode ? .off : .on; return true

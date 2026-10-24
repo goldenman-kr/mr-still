@@ -12,7 +12,7 @@ final class BrowserModel: ObservableObject {
     @Published var currentURL: URL?
     @Published var loading = false
     @Published var errorMessage: String?
-    @Published var statusMessage = "폴더를 열어 사진을 탐색하세요"
+    @Published var statusMessage = L10n.text("Open a folder to browse photos")
     @Published var sortKey: FileSortKey
     @Published var ascending: Bool
     @Published var viewMode: FileViewMode
@@ -40,20 +40,26 @@ final class BrowserModel: ObservableObject {
     private var refreshTask: DispatchWorkItem?
     private let io = DispatchQueue(label: "PhotoViewer.files", qos: .userInitiated)
 
+    let access: FileAccessController
     private let defaults: UserDefaults
 
-    init(defaults: UserDefaults = .standard) {
+    init(defaults: UserDefaults = .standard, access: FileAccessController? = nil) {
+        self.access = access ?? FileAccessController(defaults: defaults)
         self.defaults = defaults
         sortKey = FileSortKey(rawValue: defaults.string(forKey: "sortKey") ?? "") ?? .name
         ascending = defaults.object(forKey: "ascending") as? Bool ?? true
         viewMode = FileViewMode(rawValue: defaults.string(forKey: "viewMode") ?? "") ?? .large
-        recentURLs = (defaults.stringArray(forKey: "recentPaths") ?? []).map { URL(fileURLWithPath: $0) }
+        let folderAccess = self.access
+        recentURLs = (defaults.stringArray(forKey: "recentPaths") ?? []).map { folderAccess.restoredURL(for: URL(fileURLWithPath: $0)) }
         var seen = Set<URL>()
         favoriteURLs = (defaults.stringArray(forKey: "favoritePaths") ?? []).compactMap { path in
             guard path.hasPrefix("/") else { return nil }
-            let url = URL(fileURLWithPath: path, isDirectory: true).standardizedFileURL
+            let url = folderAccess.restoredURL(for: URL(fileURLWithPath: path, isDirectory: true).standardizedFileURL)
             return seen.insert(url).inserted ? url : nil
         }
+        // Persist bookmark relocations so they survive the following launch too.
+        defaults.set(recentURLs.map(\.path), forKey: "recentPaths")
+        defaults.set(favoriteURLs.map(\.path), forKey: "favoritePaths")
     }
 
     func isFavorite(_ url: URL) -> Bool { favoriteURLs.contains(Self.favoriteURL(url)) }
@@ -77,9 +83,16 @@ final class BrowserModel: ObservableObject {
     }
 
     func openFile(_ url: URL) {
+        if access.isSandboxed && !access.hasAccess(to: url) {
+            let directory = url.hasDirectoryPath ? url : url.deletingLastPathComponent()
+            guard access.ensureDirectory(directory) else {
+                errorMessage = L10n.text("Folder access was not granted. Use File > Open Folder to choose it again.")
+                return
+            }
+        }
         var isDirectory: ObjCBool = false
         guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory) else {
-            errorMessage = "파일 또는 폴더를 찾을 수 없습니다: \(url.path)"
+            errorMessage = L10n.format("File or folder not found: %@", url.path)
             return
         }
         if isDirectory.boolValue {
@@ -88,7 +101,7 @@ final class BrowserModel: ObservableObject {
             openFolder(url.deletingLastPathComponent(), selecting: url.standardizedFileURL)
             remember(url)
         } else {
-            errorMessage = "지원하지 않는 이미지 형식입니다: \(url.lastPathComponent)"
+            errorMessage = L10n.format("Unsupported image format: %@", url.lastPathComponent)
         }
     }
 
@@ -126,12 +139,17 @@ final class BrowserModel: ObservableObject {
 
     private func loadFolder(_ url: URL, selecting preferred: URL?, historyIndex: Int?) {
         let target = Self.favoriteURL(url)
+        guard access.ensureDirectory(target) else {
+            errorMessage = L10n.text("Folder access was not granted. Use File > Open Folder to choose it again.")
+            return
+        }
+        if let warning = access.persistenceWarning { errorMessage = warning }
         requestID += 1
         let id = requestID
         loading = true
         updateHistoryAvailability()
         refreshTask?.cancel()
-        statusMessage = "폴더를 읽는 중…"
+        statusMessage = L10n.text("Reading folder…")
         io.async { [weak self] in
             let result = Result {
                 var entries = try DirectoryService.contents(of: target)
@@ -163,7 +181,7 @@ final class BrowserModel: ObservableObject {
                     }
                     let folders = entries.filter(\.isDirectory).count
                     let images = entries.count - folders
-                    self.statusMessage = entries.isEmpty ? "이 폴더에 표시할 항목이 없습니다" : "폴더 \(folders)개 · 사진 \(images)개"
+                    self.statusMessage = entries.isEmpty ? L10n.text("No items to display in this folder") : L10n.format("%ld folders · %ld photos", folders, images)
                     if let historyIndex {
                         self.folderHistoryIndex = historyIndex
                     } else if !sameFolder {
@@ -174,7 +192,7 @@ final class BrowserModel: ObservableObject {
                     self.remember(target)
                     self.watch(target)
                 case .failure(let error):
-                    self.statusMessage = "폴더를 열 수 없습니다"
+                    self.statusMessage = L10n.text("Could not open folder")
                     self.errorMessage = "\(target.path)\n\(error.localizedDescription)"
                 }
                 self.loading = false
@@ -224,39 +242,47 @@ final class BrowserModel: ObservableObject {
 
     func copySelection() {
         guard canModifySelection else {
-            statusMessage = "복사는 이미지 파일을 선택했을 때 사용할 수 있습니다"
+            statusMessage = L10n.text("Select image files to copy")
             return
         }
         let urls = files.filter { selection.contains($0.url) }.map { $0.url as NSURL }
         guard !urls.isEmpty else { return }
         NSPasteboard.general.clearContents()
         NSPasteboard.general.writeObjects(urls)
-        statusMessage = "\(urls.count)개 파일 복사됨"
+        statusMessage = L10n.format("%ld files copied", urls.count)
     }
 
     func pasteFiles() {
         guard let folder, !working else { return }
-        let urls = (NSPasteboard.general.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL] ?? [])
+        guard requireWriteAccess(folder) else { return }
+        let candidates = NSPasteboard.general.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL] ?? []
+        let temporary = access.beginTemporaryAccess(to: candidates)
+        var handedOff = false
+        defer { if !handedOff { access.endTemporaryAccess(to: temporary) } }
+        let urls = candidates
             .filter { DirectoryService.isSupported($0) && (try? $0.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true }
         guard !urls.isEmpty else { NSSound.beep(); return }
         var policy = CopyConflictPolicy.keepBoth
         if urls.contains(where: { FileManager.default.fileExists(atPath: folder.appendingPathComponent($0.lastPathComponent).path) }) {
             let alert = NSAlert()
-            alert.messageText = "같은 이름의 파일이 있습니다"
-            alert.informativeText = "‘둘 다 유지’를 선택하면 새 이름으로 복사합니다. 기존 파일은 덮어쓰지 않습니다."
-            alert.addButton(withTitle: "둘 다 유지")
-            alert.addButton(withTitle: "건너뛰기")
-            alert.addButton(withTitle: "취소")
+            alert.messageText = L10n.text("Files with the same name already exist")
+            alert.informativeText = L10n.text("Choose Keep Both to copy with new names. Existing files will not be overwritten.")
+            alert.addButton(withTitle: L10n.text("Keep Both"))
+            alert.addButton(withTitle: L10n.text("Skip"))
+            alert.addButton(withTitle: L10n.text("Cancel"))
             let answer = alert.runModal()
             if answer == .alertThirdButtonReturn { return }
             if answer == .alertSecondButtonReturn { policy = .skip }
         }
         working = true
-        statusMessage = "파일 복사 중…"
+        statusMessage = L10n.text("Copying files…")
         let chosenPolicy = policy
+        handedOff = true
+        let access = self.access
         io.async { [weak self] in
             let result = FileOperations.copy(urls, to: folder, conflict: chosenPolicy)
             DispatchQueue.main.async {
+                access.endTemporaryAccess(to: temporary)
                 guard let self else { return }
                 self.working = false
                 if self.folder == folder { self.openFolder(folder, selecting: result.succeeded.last) }
@@ -268,15 +294,16 @@ final class BrowserModel: ObservableObject {
     func trashSelection() {
         guard !working, let folder else { return }
         guard canModifySelection else {
-            statusMessage = "휴지통 이동은 이미지 파일을 선택했을 때 사용할 수 있습니다"
+            statusMessage = L10n.text("Select image files to move to Trash")
             return
         }
+        guard requireWriteAccess(folder) else { return }
         let urls = files.filter { selection.contains($0.url) }.map(\.url)
         let lastIndex = files.lastIndex { selection.contains($0.url) } ?? 0
         let remaining = files.filter { !selection.contains($0.url) }
         let following = files.dropFirst(lastIndex + 1).first?.url ?? remaining.last?.url
         working = true
-        statusMessage = "휴지통으로 이동 중…"
+        statusMessage = L10n.text("Moving to Trash…")
         io.async { [weak self] in
             let result = FileOperations.trash(urls)
             DispatchQueue.main.async {
@@ -289,6 +316,14 @@ final class BrowserModel: ObservableObject {
                 if !result.failures.isEmpty { self.errorMessage = result.failures.joined(separator: "\n") }
             }
         }
+    }
+
+    private func requireWriteAccess(_ folder: URL) -> Bool {
+        guard access.ensureDirectory(folder, writing: true) else {
+            errorMessage = L10n.text("Write access is required to copy files here or move them to Trash. Choose the folder again and check its permissions in Finder.")
+            return false
+        }
+        return true
     }
 
     func clearRecentItems() {
