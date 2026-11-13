@@ -197,7 +197,7 @@ public struct FileOperationResult: Sendable {
 }
 
 public enum FileOperations {
-    /// Succeeded URLs are destinations for copy and original URLs for trash.
+    /// Succeeded URLs are destinations for copy and move, and original URLs for trash.
     public static func copy(_ urls: [URL], to directory: URL, conflict: CopyConflictPolicy) -> FileOperationResult {
         let manager = FileManager.default
         var result = FileOperationResult()
@@ -227,6 +227,24 @@ public enum FileOperations {
                     result.failures.append("\(source.lastPathComponent): \(reason)")
                     break
                 }
+            }
+        }
+        return result
+    }
+
+    public static func move(_ urls: [URL], to directory: URL) -> FileOperationResult {
+        var result = FileOperationResult()
+        for source in urls {
+            let destination = directory.appendingPathComponent(source.lastPathComponent, isDirectory: false)
+            do {
+                // moveItem refuses an existing destination even if it appeared after the drop.
+                try FileManager.default.moveItem(at: source, to: destination)
+                result.succeeded.append(destination)
+            } catch {
+                let nsError = error as NSError
+                let exists = nsError.domain == NSCocoaErrorDomain && nsError.code == NSFileWriteFileExistsError
+                let reason = exists ? L10n.text("Skipped because a file with the same name exists.") : error.localizedDescription
+                result.failures.append("\(source.lastPathComponent): \(reason)")
             }
         }
         return result

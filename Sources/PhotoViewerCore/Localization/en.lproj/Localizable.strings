@@ -150,3 +150,6 @@
 "Open With" = "Open With";
 
 "Choose Application…" = "Choose Application…";
+
+"Moving files…" = "Moving files…";
+"Write access to both folders is required to move files." = "Write access to both folders is required to move files.";

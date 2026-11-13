@@ -6,6 +6,13 @@ import PhotoViewerCore
 #endif
 
 @MainActor
+private func browserFileDragURLs(_ info: NSDraggingInfo) -> [URL] {
+    guard info.draggingSourceOperationMask.contains(.move),
+          info.draggingSource is BrowserCollectionView || info.draggingSource is BrowserTableView else { return [] }
+    return info.draggingPasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL] ?? []
+}
+
+@MainActor
 private final class DirectoryNode: NSObject {
     let url: URL?
     let title: String
@@ -84,6 +91,7 @@ final class DirectoryTreeController: NSViewController, NSOutlineViewDataSource, 
         outline.allowsEmptySelection = true
         outline.dataSource = self
         outline.delegate = self
+        outline.registerForDraggedTypes([.fileURL])
         outline.target = self
         outline.doubleAction = #selector(toggleClickedDirectory(_:))
         outline.setAccessibilityLabel(L10n.text("Folder browser"))
@@ -421,6 +429,21 @@ final class DirectoryTreeController: NSViewController, NSOutlineViewDataSource, 
         (item as? DirectoryNode)?.url != nil
     }
 
+    func outlineView(_ outlineView: NSOutlineView, validateDrop info: NSDraggingInfo,
+                     proposedItem item: Any?, proposedChildIndex index: Int) -> NSDragOperation {
+        let row = outlineView.row(at: outlineView.convert(info.draggingLocation, from: nil))
+        guard row >= 0, let node = outlineView.item(atRow: row) as? DirectoryNode,
+              let url = node.url, model.canMoveFiles(to: url), !browserFileDragURLs(info).isEmpty else { return [] }
+        outlineView.setDropItem(node, dropChildIndex: NSOutlineViewDropOnItemIndex)
+        return .move
+    }
+
+    func outlineView(_ outlineView: NSOutlineView, acceptDrop info: NSDraggingInfo,
+                     item: Any?, childIndex index: Int) -> Bool {
+        guard index == NSOutlineViewDropOnItemIndex, let url = (item as? DirectoryNode)?.url else { return false }
+        return model.moveFiles(browserFileDragURLs(info), to: url)
+    }
+
     func outlineView(_ outlineView: NSOutlineView, numberOfChildrenOfItem item: Any?) -> Int {
         guard let node = item as? DirectoryNode else { return roots.count }
         return node.children?.count ?? 0
@@ -519,6 +542,9 @@ final class FileBrowserController: NSViewController, NSCollectionViewDataSource,
         collection.isSelectable = true; collection.allowsMultipleSelection = true
         collection.allowsEmptySelection = true
         collection.dataSource = self; collection.delegate = self
+        collection.setDraggingSourceOperationMask(.move, forLocal: true)
+        collection.setDraggingSourceOperationMask(.copy, forLocal: false)
+        collection.registerForDraggedTypes([.fileURL])
         collection.backgroundColors = [.controlBackgroundColor]
         collection.setAccessibilityLabel(L10n.text("Folder and photo thumbnails"))
         collection.onPointer = { [weak self] index in self?.prefer(index) }
@@ -539,6 +565,9 @@ final class FileBrowserController: NSViewController, NSCollectionViewDataSource,
         table.rowHeight = 30; table.usesAlternatingRowBackgroundColors = true
         table.allowsMultipleSelection = true; table.allowsEmptySelection = true
         table.dataSource = self; table.delegate = self
+        table.setDraggingSourceOperationMask(.move, forLocal: true)
+        table.setDraggingSourceOperationMask(.copy, forLocal: false)
+        table.registerForDraggedTypes([.fileURL])
         table.target = self; table.doubleAction = #selector(openSlide(_:))
         table.onPointer = { [weak self] index in self?.prefer(index) }
         table.onSelection = { [weak self] in self?.selectionChanged() }
@@ -721,6 +750,57 @@ final class FileBrowserController: NSViewController, NSCollectionViewDataSource,
     }
     func collectionView(_ collectionView: NSCollectionView, didSelectItemsAt indexPaths: Set<IndexPath>) { selectionChanged() }
     func collectionView(_ collectionView: NSCollectionView, didDeselectItemsAt indexPaths: Set<IndexPath>) { selectionChanged() }
+
+    private func fileDragWriter(at index: Int) -> NSURL? {
+        guard !model.loading, !model.working, files.indices.contains(index), !files[index].isDirectory else { return nil }
+        return files[index].url as NSURL
+    }
+
+    private func dropFolder(at index: Int) -> URL? {
+        guard files.indices.contains(index), files[index].isDirectory else { return nil }
+        return files[index].url
+    }
+
+    func collectionView(_ collectionView: NSCollectionView, pasteboardWriterForItemAt indexPath: IndexPath) -> NSPasteboardWriting? {
+        fileDragWriter(at: indexPath.item)
+    }
+
+    func collectionView(_ collectionView: NSCollectionView, validateDrop info: NSDraggingInfo,
+                        proposedIndexPath indexPath: AutoreleasingUnsafeMutablePointer<NSIndexPath>,
+                        dropOperation: UnsafeMutablePointer<NSCollectionView.DropOperation>) -> NSDragOperation {
+        let point = collectionView.convert(info.draggingLocation, from: nil)
+        guard let hovered = collectionView.indexPathForItem(at: point), let url = dropFolder(at: hovered.item),
+              model.canMoveFiles(to: url), !browserFileDragURLs(info).isEmpty else { return [] }
+        indexPath.pointee = hovered as NSIndexPath
+        dropOperation.pointee = .on
+        return .move
+    }
+
+    func collectionView(_ collectionView: NSCollectionView, acceptDrop info: NSDraggingInfo,
+                        indexPath: IndexPath, dropOperation: NSCollectionView.DropOperation) -> Bool {
+        guard dropOperation == .on, let url = dropFolder(at: indexPath.item) else { return false }
+        return model.moveFiles(browserFileDragURLs(info), to: url)
+    }
+
+    func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> NSPasteboardWriting? {
+        fileDragWriter(at: row)
+    }
+
+    func tableView(_ tableView: NSTableView, validateDrop info: NSDraggingInfo,
+                   proposedRow row: Int, proposedDropOperation operation: NSTableView.DropOperation) -> NSDragOperation {
+        let hovered = tableView.row(at: tableView.convert(info.draggingLocation, from: nil))
+        guard let url = dropFolder(at: hovered), model.canMoveFiles(to: url),
+              !browserFileDragURLs(info).isEmpty else { return [] }
+        tableView.setDropRow(hovered, dropOperation: .on)
+        return .move
+    }
+
+    func tableView(_ tableView: NSTableView, acceptDrop info: NSDraggingInfo,
+                   row: Int, dropOperation: NSTableView.DropOperation) -> Bool {
+        guard dropOperation == .on, let url = dropFolder(at: row) else { return false }
+        return model.moveFiles(browserFileDragURLs(info), to: url)
+    }
+
     func numberOfRows(in tableView: NSTableView) -> Int { files.count }
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
         let file = files[row]

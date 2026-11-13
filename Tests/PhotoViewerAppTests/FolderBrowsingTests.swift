@@ -3,6 +3,35 @@ import AppKit
 @testable import PhotoViewer
 import PhotoViewerCore
 
+@MainActor
+private final class FileDrop: NSObject, NSDraggingInfo {
+    var draggingDestinationWindow: NSWindow? { nil }
+    var draggingSourceOperationMask: NSDragOperation = .move
+    var draggingLocation = NSPoint.zero
+    var draggedImageLocation: NSPoint { .zero }
+    nonisolated var draggedImage: NSImage? { nil }
+    let draggingPasteboard = NSPasteboard.withUniqueName()
+    let draggingSource: Any?
+    var draggingSequenceNumber: Int { 0 }
+    var draggingFormation: NSDraggingFormation = .none
+    var animatesToDestination = false
+    var numberOfValidItemsForDrop = 0
+    var springLoadingHighlight: NSSpringLoadingHighlight { .none }
+
+    init(source: NSView, writers: [NSPasteboardWriting]) {
+        draggingSource = source
+        super.init()
+        draggingPasteboard.writeObjects(writers)
+    }
+
+    func slideDraggedImage(to screenPoint: NSPoint) {}
+    nonisolated override func namesOfPromisedFilesDropped(atDestination dropDestination: URL) -> [String]? { nil }
+    func enumerateDraggingItems(options enumOpts: NSDraggingItemEnumerationOptions, for view: NSView?,
+                                classes classArray: [AnyClass], searchOptions: [NSPasteboard.ReadingOptionKey: Any],
+                                using block: (NSDraggingItem, Int, UnsafeMutablePointer<ObjCBool>) -> Void) {}
+    func resetSpringLoading() {}
+}
+
 final class FolderBrowsingTests: XCTestCase {
     private var suites: [String] = []
 
@@ -51,6 +80,85 @@ final class FolderBrowsingTests: XCTestCase {
                 let result = FileOrdering.sorted(entries, by: key, ascending: ascending)
                 XCTAssertEqual(result.map(\.isDirectory), [true, true, false, false])
             }
+        }
+    }
+
+    @MainActor
+    func testMovingMultipleImagesSkipsConflictsAndRefreshesSource() async throws {
+        let root = try fixture()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let model = model()
+        model.openFolder(root)
+        try await waitUntil { !model.loading }
+        let source = try XCTUnwrap(model.files.first { $0.name == "a.png" }?.url)
+        let conflict = try XCTUnwrap(model.files.first { $0.name == "z.png" }?.url)
+        let album = try XCTUnwrap(model.files.first { $0.name == "Albums" }?.url)
+        let existing = album.appendingPathComponent("z.png")
+        let original = Data([1, 2, 3])
+        try original.write(to: existing)
+
+        XCTAssertFalse(model.moveFiles([source], to: root))
+        XCTAssertFalse(model.moveFiles([source, album], to: album))
+        XCTAssertTrue(model.moveFiles([source, conflict], to: album))
+        XCTAssertFalse(model.moveFiles([conflict], to: album))
+        try await waitUntil { !model.working && !model.loading }
+
+        XCTAssertFalse(FileManager.default.fileExists(atPath: source.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: album.appendingPathComponent("a.png").path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: conflict.path))
+        XCTAssertEqual(try Data(contentsOf: existing), original)
+        XCTAssertFalse(model.files.contains { $0.url == source })
+        XCTAssertTrue(model.files.contains { $0.url == conflict })
+        XCTAssertNotNil(model.errorMessage)
+    }
+
+    @MainActor
+    func testListAndThumbnailDragsProvideFileURLsAndAcceptFolderDrops() async throws {
+        _ = NSApplication.shared
+        let root = try fixture()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let model = model()
+        model.openFolder(root)
+        try await waitUntil { !model.loading }
+
+        for mode in [FileViewMode.list, .large] {
+            model.viewMode = mode
+            let controller = FileBrowserController(model: model)
+            controller.view.frame = NSRect(x: 0, y: 0, width: 440, height: 360)
+            controller.view.layoutSubtreeIfNeeded()
+            let name = mode == .list ? "a.png" : "z.png"
+            let source = try XCTUnwrap(model.files.firstIndex { $0.name == name })
+            let target = try XCTUnwrap(model.files.firstIndex { $0.name == "Albums" })
+            let targetPath = IndexPath(item: target, section: 0)
+            let sourcePath = IndexPath(item: source, section: 0)
+            let drag: FileDrop
+            if mode == .list {
+                let table = try XCTUnwrap(descendant(NSTableView.self, in: controller.view))
+                let writer = try XCTUnwrap(table.dataSource?.tableView?(table, pasteboardWriterForRow: source))
+                XCTAssertNil(table.dataSource?.tableView?(table, pasteboardWriterForRow: target))
+                drag = FileDrop(source: table, writers: [writer])
+                let frame = table.rect(ofRow: target)
+                drag.draggingLocation = table.convert(NSPoint(x: frame.midX, y: frame.midY), to: nil)
+                XCTAssertEqual(table.dataSource?.tableView?(table, validateDrop: drag, proposedRow: target, proposedDropOperation: .above), .move)
+                XCTAssertEqual(table.dataSource?.tableView?(table, acceptDrop: drag, row: target, dropOperation: .on), true)
+            } else {
+                let collection = try XCTUnwrap(descendant(NSCollectionView.self, in: controller.view))
+                let writer = try XCTUnwrap(collection.delegate?.collectionView?(collection, pasteboardWriterForItemAt: sourcePath))
+                XCTAssertNil(collection.delegate?.collectionView?(collection, pasteboardWriterForItemAt: targetPath))
+                drag = FileDrop(source: collection, writers: [writer])
+                let frame = try XCTUnwrap(collection.layoutAttributesForItem(at: targetPath)?.frame)
+                drag.draggingLocation = collection.convert(NSPoint(x: frame.midX, y: frame.midY), to: nil)
+                var proposedPath = sourcePath as NSIndexPath
+                var operation = NSCollectionView.DropOperation.before
+                XCTAssertEqual(collection.delegate?.collectionView?(collection, validateDrop: drag, proposedIndexPath: &proposedPath, dropOperation: &operation), .move)
+                XCTAssertEqual(proposedPath as IndexPath, targetPath)
+                XCTAssertEqual(operation, .on)
+                XCTAssertEqual(collection.delegate?.collectionView?(collection, acceptDrop: drag, indexPath: targetPath, dropOperation: .on), true)
+            }
+            let urls = drag.draggingPasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL]
+            XCTAssertEqual(urls?.map(\.lastPathComponent), [name])
+            try await waitUntil { !model.working && !model.loading }
+            XCTAssertTrue(FileManager.default.fileExists(atPath: root.appendingPathComponent("Albums/\(name)").path))
         }
     }
 

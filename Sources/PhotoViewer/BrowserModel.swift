@@ -291,6 +291,37 @@ final class BrowserModel: ObservableObject {
         }
     }
 
+    func canMoveFiles(to destination: URL) -> Bool {
+        guard !loading, !working, let folder, destination.isFileURL else { return false }
+        return folder.resolvingSymlinksInPath().path != destination.resolvingSymlinksInPath().path
+    }
+
+    @discardableResult
+    func moveFiles(_ urls: [URL], to destination: URL) -> Bool {
+        guard canMoveFiles(to: destination), let folder, !urls.isEmpty else { return false }
+        let visibleImages = Set(files.filter { !$0.isDirectory }.map(\.url))
+        guard Set(urls).isSubset(of: visibleImages) else { return false }
+        guard access.ensureDirectory(folder, writing: true),
+              access.ensureDirectory(destination, writing: true) else {
+            errorMessage = L10n.text("Write access to both folders is required to move files.")
+            return false
+        }
+        working = true
+        statusMessage = L10n.text("Moving files…")
+        io.async { [weak self] in
+            let result = FileOperations.move(urls, to: destination)
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.working = false
+                if !self.loading, let current = self.folder, current == folder || current == destination {
+                    self.openFolder(current)
+                }
+                if !result.failures.isEmpty { self.errorMessage = result.failures.joined(separator: "\n") }
+            }
+        }
+        return true
+    }
+
     func trashSelection() {
         guard !working, let folder else { return }
         guard canModifySelection else {
