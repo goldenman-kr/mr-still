@@ -6,7 +6,7 @@
 
 macOS 14 이상에서 사용할 수 있습니다. Apple Silicon과 Intel Mac을 모두 지원하는 Universal 앱입니다.
 
-1. [최신 릴리스](https://github.com/goldenman-kr/mr-still/releases/latest)에서 `Mr.Still-1.2.0-universal.dmg`를 다운로드합니다.
+1. [최신 릴리스](https://github.com/goldenman-kr/mr-still/releases/latest)에서 `Mr.Still-1.2.1-universal.dmg`를 다운로드합니다.
 2. DMG를 열고 **Mr. Still**을 **Applications** 폴더로 드래그합니다.
 3. 디스크 이미지를 추출하고 응용 프로그램 폴더에서 **Mr. Still**을 실행합니다.
 

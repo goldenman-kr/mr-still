@@ -12,6 +12,10 @@ private func browserFileDragURLs(_ info: NSDraggingInfo) -> [URL] {
     return info.draggingPasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL] ?? []
 }
 
+private final class FolderDropHighlight: NSView {
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+}
+
 @MainActor
 private final class DirectoryNode: NSObject {
     let url: URL?
@@ -509,6 +513,7 @@ final class FileBrowserController: NSViewController, NSCollectionViewDataSource,
     private var previousFolder: URL?
     private var lastRevealedURL: URL?
     private let layout = BalancedThumbnailLayout()
+    private let dropHighlight = FolderDropHighlight()
 
     init(model: BrowserModel) { self.model = model; super.init(nibName: nil, bundle: nil) }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
@@ -577,6 +582,20 @@ final class FileBrowserController: NSViewController, NSCollectionViewDataSource,
         table.onArrow = { [weak self] forward in self?.keyboardSelection(forward: forward) }
         table.setAccessibilityLabel(L10n.text("Folder and photo list"))
 
+        dropHighlight.wantsLayer = true
+        dropHighlight.layer?.backgroundColor = NSColor.controlAccentColor.withAlphaComponent(0.20).cgColor
+        dropHighlight.layer?.borderColor = NSColor.controlAccentColor.cgColor
+        dropHighlight.layer?.borderWidth = 2
+        dropHighlight.layer?.cornerRadius = 5
+        collection.onFolderDrop = { [weak self] info, commit in
+            guard let self else { return [] }
+            return self.handleFolderDrop(info, in: self.collection, commit: commit)
+        }
+        table.onFolderDrop = { [weak self] info, commit in
+            guard let self else { return [] }
+            return self.handleFolderDrop(info, in: self.table, commit: commit)
+        }
+
         scroll.hasVerticalScroller = true; scroll.autohidesScrollers = true
         scroll.drawsBackground = true; scroll.backgroundColor = .controlBackgroundColor
         status.font = .systemFont(ofSize: 11); status.textColor = .secondaryLabelColor
@@ -631,6 +650,7 @@ final class FileBrowserController: NSViewController, NSCollectionViewDataSource,
         direction.toolTip = model.ascending ? L10n.text("Ascending — click for descending") : L10n.text("Descending — click for ascending")
         direction.setAccessibilityLabel(model.ascending ? L10n.text("Ascending") : L10n.text("Descending"))
         if activeMode != model.viewMode {
+            dropHighlight.removeFromSuperview()
             activeMode = model.viewMode
             let isList = model.viewMode == .list
             scroll.documentView = isList ? table : collection
@@ -756,49 +776,50 @@ final class FileBrowserController: NSViewController, NSCollectionViewDataSource,
         return files[index].url as NSURL
     }
 
-    private func dropFolder(at index: Int) -> URL? {
-        guard files.indices.contains(index), files[index].isDirectory else { return nil }
-        return files[index].url
-    }
-
     func collectionView(_ collectionView: NSCollectionView, pasteboardWriterForItemAt indexPath: IndexPath) -> NSPasteboardWriting? {
         fileDragWriter(at: indexPath.item)
-    }
-
-    func collectionView(_ collectionView: NSCollectionView, validateDrop info: NSDraggingInfo,
-                        proposedIndexPath indexPath: AutoreleasingUnsafeMutablePointer<NSIndexPath>,
-                        dropOperation: UnsafeMutablePointer<NSCollectionView.DropOperation>) -> NSDragOperation {
-        let point = collectionView.convert(info.draggingLocation, from: nil)
-        guard let hovered = collectionView.indexPathForItem(at: point), let url = dropFolder(at: hovered.item),
-              model.canMoveFiles(to: url), !browserFileDragURLs(info).isEmpty else { return [] }
-        indexPath.pointee = hovered as NSIndexPath
-        dropOperation.pointee = .on
-        return .move
-    }
-
-    func collectionView(_ collectionView: NSCollectionView, acceptDrop info: NSDraggingInfo,
-                        indexPath: IndexPath, dropOperation: NSCollectionView.DropOperation) -> Bool {
-        guard dropOperation == .on, let url = dropFolder(at: indexPath.item) else { return false }
-        return model.moveFiles(browserFileDragURLs(info), to: url)
     }
 
     func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> NSPasteboardWriting? {
         fileDragWriter(at: row)
     }
 
-    func tableView(_ tableView: NSTableView, validateDrop info: NSDraggingInfo,
-                   proposedRow row: Int, proposedDropOperation operation: NSTableView.DropOperation) -> NSDragOperation {
-        let hovered = tableView.row(at: tableView.convert(info.draggingLocation, from: nil))
-        guard let url = dropFolder(at: hovered), model.canMoveFiles(to: url),
-              !browserFileDragURLs(info).isEmpty else { return [] }
-        tableView.setDropRow(hovered, dropOperation: .on)
-        return .move
-    }
+    private func handleFolderDrop(_ info: NSDraggingInfo?, in browser: NSView, commit: Bool) -> NSDragOperation {
+        dropHighlight.removeFromSuperview()
+        guard let info else { return [] }
+        let point = browser.convert(info.draggingLocation, from: nil)
+        guard browser.visibleRect.contains(point) else { return [] }
 
-    func tableView(_ tableView: NSTableView, acceptDrop info: NSDraggingInfo,
-                   row: Int, dropOperation: NSTableView.DropOperation) -> Bool {
-        guard dropOperation == .on, let url = dropFolder(at: row) else { return false }
-        return model.moveFiles(browserFileDragURLs(info), to: url)
+        let index: Int
+        let frame: NSRect
+        if let collection = browser as? NSCollectionView {
+            // The source collection can temporarily hide items during a drag.
+            // Use the layout's item frames instead of hit-testing item views.
+            let rect = NSRect(x: point.x, y: point.y, width: 1, height: 1)
+            guard let attributes = collection.collectionViewLayout?.layoutAttributesForElements(in: rect)
+                .first(where: { $0.representedElementCategory == .item && $0.frame.contains(point) }),
+                  let path = attributes.indexPath else { return [] }
+            index = path.item
+            frame = attributes.frame
+        } else if let table = browser as? NSTableView {
+            index = table.row(at: point)
+            guard index >= 0 else { return [] }
+            frame = table.rect(ofRow: index)
+        } else {
+            return []
+        }
+
+        guard files.indices.contains(index), files[index].isDirectory else { return [] }
+        let destination = files[index].url
+        let urls = browserFileDragURLs(info)
+        guard !urls.isEmpty, model.canMoveFiles(to: destination) else { return [] }
+        if commit {
+            return model.moveFiles(urls, to: destination) ? .move : []
+        }
+        info.animatesToDestination = false
+        dropHighlight.frame = frame.insetBy(dx: 2, dy: 1)
+        browser.addSubview(dropHighlight, positioned: .above, relativeTo: nil)
+        return .move
     }
 
     func numberOfRows(in tableView: NSTableView) -> Int { files.count }
@@ -927,6 +948,14 @@ private final class BrowserThumbnailItem: NSCollectionViewItem {
 }
 
 private final class BrowserCollectionView: NSCollectionView {
+    var onFolderDrop: ((NSDraggingInfo?, Bool) -> NSDragOperation)?
+    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation { draggingUpdated(sender) }
+    override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation { onFolderDrop?(sender, false) ?? [] }
+    override func draggingExited(_ sender: NSDraggingInfo?) { _ = onFolderDrop?(nil, false) }
+    override func prepareForDragOperation(_ sender: NSDraggingInfo) -> Bool { draggingUpdated(sender) == .move }
+    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool { onFolderDrop?(sender, true) == .move }
+    override func concludeDragOperation(_ sender: NSDraggingInfo?) { _ = onFolderDrop?(nil, false) }
+
     override func setFrameSize(_ newSize: NSSize) {
         let previousWidth = bounds.width
         super.setFrameSize(newSize)
@@ -963,6 +992,14 @@ private final class BrowserCollectionView: NSCollectionView {
 }
 
 private final class BrowserTableView: NSTableView {
+    var onFolderDrop: ((NSDraggingInfo?, Bool) -> NSDragOperation)?
+    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation { draggingUpdated(sender) }
+    override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation { onFolderDrop?(sender, false) ?? [] }
+    override func draggingExited(_ sender: NSDraggingInfo?) { _ = onFolderDrop?(nil, false) }
+    override func prepareForDragOperation(_ sender: NSDraggingInfo) -> Bool { draggingUpdated(sender) == .move }
+    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool { onFolderDrop?(sender, true) == .move }
+    override func concludeDragOperation(_ sender: NSDraggingInfo?) { _ = onFolderDrop?(nil, false) }
+
     var onPointer: ((Int?) -> Void)?
     var onSelection: (() -> Void)?
     var onReturn: (() -> Void)?
